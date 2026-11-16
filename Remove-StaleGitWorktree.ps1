@@ -4,7 +4,9 @@
 param (
     [string] $TargetDirectory = 'C:\GIT\DenWin',
 
-    [switch] $Apply
+    [switch] $Apply,
+
+    [switch] $DeleteMergedBranch
 )
 
 Set-StrictMode -Version Latest
@@ -51,7 +53,9 @@ function Remove-StaleRepositoryWorktree {
         [Parameter(Mandatory)]
         [string] $RepositoryRoot,
 
-        [switch] $Apply
+        [switch] $Apply,
+
+        [switch] $DeleteMergedBranch
     )
 
     $bareRepository = Join-Path $RepositoryRoot '.git'
@@ -63,12 +67,33 @@ function Remove-StaleRepositoryWorktree {
 
     # Query the remote even in preview mode; stale tracking refs are not evidence of deletion.
     $remoteRefs = @(Invoke-Git -Arguments @('-C', $bareRepository, 'ls-remote', '--heads', 'origin'))
+    if ($remoteRefs.Count -eq 0) {
+        Write-Warning "Skipping '$RepositoryRoot': origin returned no branches; refusing cleanup."
+        return
+    }
     $remoteBranches = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     foreach ($line in $remoteRefs) {
         if ($line -notmatch '^[0-9a-f]+\trefs/heads/(.+)$') {
             throw "Unexpected remote branch response for '$RepositoryRoot': $line"
         }
         [void] $remoteBranches.Add($Matches[1])
+    }
+
+    $defaultCommit = $null
+    if ($DeleteMergedBranch) {
+        $head = @(Invoke-Git -Arguments @('-C', $bareRepository, 'ls-remote', '--symref', 'origin', 'HEAD'))
+        $headRef = @($head | Where-Object { $_ -match '^ref: refs/heads/.+\tHEAD$' })
+        $headCommit = @($head | Where-Object { $_ -match '^(?:[0-9a-f]{40}|[0-9a-f]{64})\tHEAD$' })
+        if ($headRef.Count -eq 1 -and $headCommit.Count -eq 1) {
+            $branchRef = ($headRef[0] -split "`t", 2)[0].Substring(5)
+            $candidateCommit = ($headCommit[0] -split "`t", 2)[0]
+            if ($remoteRefs -ccontains "$candidateCommit`t$branchRef") {
+                $defaultCommit = $candidateCommit
+            }
+        }
+        if (-not $defaultCommit) {
+            Write-Warning "Cannot determine origin's default branch for '$RepositoryRoot'; local branches will be preserved."
+        }
     }
 
     $upstreams = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
@@ -148,12 +173,35 @@ function Remove-StaleRepositoryWorktree {
             continue
         }
 
+        $deleteBranch = $false
+        if ($DeleteMergedBranch -and $defaultCommit) {
+            Invoke-Git -AllowFailure -Arguments @(
+                '-C', $bareRepository, 'merge-base', '--is-ancestor', "refs/heads/$($worktree.Branch)", $defaultCommit
+            ) 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                $deleteBranch = $true
+            }
+            elseif ($LASTEXITCODE -ne 1) {
+                Write-Warning "Cannot check whether '$($worktree.Branch)' is merged into origin's default branch; preserving it."
+            }
+        }
+
         if (-not $Apply) {
-            Write-Host "[DRY RUN] Would remove '$path' (branch '$($worktree.Branch)' is preserved)."
+            $branchAction = if ($deleteBranch) { 'would attempt safe branch deletion' } else { 'branch is preserved' }
+            Write-Host "[DRY RUN] Would remove '$path' ($branchAction for '$($worktree.Branch)')."
         }
         elseif ($PSCmdlet.ShouldProcess($path, 'Remove worktree; preserve local branch')) {
             Invoke-Git -Arguments @('-C', $bareRepository, 'worktree', 'remove', '--', $path)
-            Write-Host "Removed '$path'; local branch '$($worktree.Branch)' is preserved."
+            Write-Host "Removed '$path'."
+            if ($deleteBranch -and $PSCmdlet.ShouldProcess($worktree.Branch, 'Delete merged local branch with git branch -d')) {
+                Invoke-Git -AllowFailure -Arguments @('-C', $bareRepository, 'branch', '-d', '--', $worktree.Branch)
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Warning "Git refused to delete local branch '$($worktree.Branch)'; it is preserved."
+                }
+            }
+            else {
+                Write-Host "Local branch '$($worktree.Branch)' is preserved."
+            }
         }
     }
 }
@@ -164,7 +212,9 @@ function Invoke-WorktreeCleanup {
         [Parameter(Mandatory)]
         [string] $TargetDirectory,
 
-        [switch] $Apply
+        [switch] $Apply,
+
+        [switch] $DeleteMergedBranch
     )
 
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -191,10 +241,10 @@ function Invoke-WorktreeCleanup {
         Write-Warning "No repositories with a bare .git directory found in '$TargetDirectory'."
     }
     foreach ($repository in $repositories) {
-        Remove-StaleRepositoryWorktree -RepositoryRoot $repository.FullName -Apply:$Apply
+        Remove-StaleRepositoryWorktree -RepositoryRoot $repository.FullName -Apply:$Apply -DeleteMergedBranch:$DeleteMergedBranch
     }
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
-    Invoke-WorktreeCleanup -TargetDirectory $TargetDirectory -Apply:$Apply
+    Invoke-WorktreeCleanup -TargetDirectory $TargetDirectory -Apply:$Apply -DeleteMergedBranch:$DeleteMergedBranch
 }

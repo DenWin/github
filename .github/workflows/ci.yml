@@ -12,6 +12,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-scopes: runtime, development, unknown
+          show-openssf-scorecard: false
+
   checks:
     permissions:
       contents: read
@@ -26,18 +41,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install modules
+      - name: Install verified modules and run checks
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $dependencies = Import-PowerShellDataFile .\DevelopmentDependencies.psd1
-          foreach ($module in $dependencies.Keys) {
-            Install-Module -Name $module -RequiredVersion $dependencies[$module] -Repository PSGallery -Scope CurrentUser -Force
-          }
-
-      - name: Lint and test
-        shell: pwsh
-        run: ./Invoke-Checks.ps1
+          $modules = Join-Path $env:RUNNER_TEMP 'verified-powershell-modules'
+          ./Install-DevelopmentDependencies.ps1 -Destination $modules
+          $env:PSModulePath = "$modules$([System.IO.Path]::PathSeparator)$env:PSModulePath"
+          ./Invoke-Checks.ps1
 
       - name: Upload test results
         if: always()

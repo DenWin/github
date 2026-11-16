@@ -36,6 +36,14 @@ function Assert-Precondition {
         throw 'GitHub CLI (gh) is not installed or not available in PATH.'
     }
 
+    if ($IsWindows) {
+        $PSNativeCommandUseErrorActionPreference = $false
+        Invoke-Git credential-manager --version 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Git Credential Manager is not available. Install it before configuring Git.'
+        }
+    }
+
     Invoke-Gh auth status 2>$null | Out-Null
 
     if ($LASTEXITCODE -ne 0) {
@@ -93,9 +101,17 @@ function Get-GitConfigPlan {
         # Set upstream tracking on first push.
         , @('push.autoSetupRemote', 'true', 'Push')
         , @('push.default', 'simple', 'Push')
+        , @('push.followTags', 'true', 'Push')
         # Remove remote-tracking branches and tags deleted on the remote.
         , @('fetch.prune', 'true', 'Fetch')
         , @('fetch.pruneTags', 'true', 'Fetch')
+        , @('fetch.writeCommitGraph', 'true', 'Fetch')
+        , @('transfer.fsckObjects', 'true', 'Security')
+        , @('protocol.file.allow', 'user', 'Security')
+        if ($IsWindows) {
+            , @('credential.helper', 'manager', 'Security')
+            , @('core.longpaths', 'true', 'Windows')
+        }
         # Reuse manually resolved conflicts; show base + both sides.
         , @('rerere.enabled', 'true', 'Merge / Conflicts')
         , @('merge.conflictStyle', 'zdiff3', 'Merge / Conflicts')
@@ -117,6 +133,24 @@ function Invoke-GitConfigPlan {
     )
 
     foreach ($entry in $Plan) {
+        if ($entry.Key -eq 'credential.helper') {
+            if ($DryRun) {
+                Write-Host "[DRY RUN] git config --global --replace-all credential.helper ''" -ForegroundColor Yellow
+                Write-Host "[DRY RUN] git config --global --add credential.helper '$($entry.Value)'" -ForegroundColor Yellow
+                continue
+            }
+
+            Invoke-Git config --global --replace-all credential.helper ''
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to reset git config 'credential.helper'."
+            }
+            Invoke-Git config --global --add credential.helper $entry.Value
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to set git config 'credential.helper'."
+            }
+            continue
+        }
+
         if ($DryRun) {
             Write-Host "[DRY RUN] git config --global $($entry.Key) '$($entry.Value)'" -ForegroundColor Yellow
             continue

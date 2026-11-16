@@ -195,10 +195,11 @@ function Get-GitHubSecurityFinding {
             Id = 'github.action-sources'; Endpoint = "$base/actions/permissions/selected-actions"
             Required = @('github_owned_allowed', 'verified_allowed', 'patterns_allowed')
             Test = { param ($data) $data['github_owned_allowed'] -eq $true -and
-                $data['verified_allowed'] -eq $false -and @($data['patterns_allowed']).Count -eq 0 }
-            Message = 'Restrict selected action sources to GitHub-owned actions; review exceptions explicitly.'
+                $data['verified_allowed'] -eq $false -and @($data['patterns_allowed']).Count -eq 1 -and
+                $data['patterns_allowed'][0] -eq 'ossf/scorecard-action@*' }
+            Message = 'Restrict selected action sources to GitHub-owned actions and the explicit OpenSSF Scorecard exception.'
             Fix = @{ Endpoint = "$base/actions/permissions/selected-actions"; Method = 'PUT'
-                Body = @{ github_owned_allowed = $true; verified_allowed = $false; patterns_allowed = @() }
+                Body = @{ github_owned_allowed = $true; verified_allowed = $false; patterns_allowed = @('ossf/scorecard-action@*') }
             }
         }
         @{
@@ -226,6 +227,13 @@ function Get-GitHubSecurityFinding {
             Test = { param ($data) $data['enabled'] -eq $true }
             Message = 'Enable private vulnerability reporting for this public repository.'
             Fix = @{ Endpoint = "$base/private-vulnerability-reporting"; Method = 'PUT' }
+        }
+        @{
+            Id = 'github.delete-merged-branches'; Endpoint = $base
+            Required = @('delete_branch_on_merge')
+            Test = { param ($data) $data['delete_branch_on_merge'] -eq $true }
+            Message = 'Automatically delete head branches after pull requests are merged.'
+            Fix = @{ Endpoint = $base; Method = 'PATCH'; Body = @{ delete_branch_on_merge = $true } }
         }
     )
     foreach ($check in $checks) {

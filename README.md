@@ -14,8 +14,10 @@ changing anything. Worktree cleanup previews by default and requires `-Apply`.
 ## Requirements
 
 - [PowerShell 7+](https://learn.microsoft.com/powershell/scripting/install/installing-powershell)
-- [Git](https://git-scm.com/)
+- [Git 2.37 or newer](https://git-scm.com/)
 - [GitHub CLI](https://cli.github.com/), authenticated (`gh auth login`)
+- On Windows, [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager)
+  for global Git configuration.
 
 Development dependencies are pinned in `DevelopmentDependencies.psd1`: Pester,
 PSScriptAnalyzer, and powershell-yaml. Use a current PowerShell 7 release supported
@@ -43,7 +45,14 @@ by those module versions.
 
 `user.email` is always the GitHub noreply address (`<id>+<login>@users.noreply.github.com`).
 
-Settings applied: LF line endings (`core.autocrlf=input`), default branch `main`, pull with rebase and autostash, automatic upstream on push, prune on fetch (branches and tags), `rerere`, `zdiff3` conflict style, `histogram` diff, VS Code as editor, colored UI. See `Get-GitConfigPlan` for the full list.
+Settings applied: LF line endings (`core.autocrlf=input`), default branch `main`, pull with rebase and autostash, automatic upstream and annotated tag following on push, prune and write a commit graph on fetch, object verification (`transfer.fsckObjects=true`), local-file protocol restricted to user-initiated operations, `rerere`, `zdiff3` conflict style, `histogram` diff, VS Code as editor, colored UI. On Windows, long paths are enabled. See `Get-GitConfigPlan` for the full list. Following tags may push additional annotated tags.
+
+On Windows the script replaces global credential helpers with Git Credential
+Manager, resetting helpers inherited from system configuration first. It fails
+before applying changes if the manager is unavailable. Repository, worktree,
+URL-specific and command-line configuration can still override or add helpers;
+review those separately. Existing plaintext credential files are not removed.
+Other platforms keep their existing credential-helper configuration.
 
 ### Sync-GitRepositories.ps1
 
@@ -88,21 +97,33 @@ Behavior:
 # Apply cleanup, or limit it to a single repository root containing a bare .git directory
 .\Remove-StaleGitWorktree.ps1 -TargetDirectory C:\GIT\DenWin -Apply
 .\Remove-StaleGitWorktree.ps1 -TargetDirectory C:\GIT\DenWin\github -Apply -WhatIf
+
+# Optionally preview, then delete eligible merged local branches as well
+.\Remove-StaleGitWorktree.ps1 -TargetDirectory C:\GIT\DenWin\github -DeleteMergedBranch
+.\Remove-StaleGitWorktree.ps1 -TargetDirectory C:\GIT\DenWin\github -DeleteMergedBranch -Apply
 ```
 
 Requires Git and read access to each repository's origin. Queries origin directly,
 without fetching or trusting stale remote-tracking refs; remote errors stop cleanup.
+An empty remote branch listing also skips cleanup, even for an empty repository.
 Only registered worktrees tracking an origin branch that no longer exists are
 eligible. Local-only branches, detached worktrees and other remotes are left alone.
 
 Cleanup uses `git worktree remove` without force, not recursive folder deletion.
-It preserves local branches and commits, including unpushed commits. It skips
+By default it preserves local branches and commits, including unpushed commits. It skips
 locked or missing worktrees, the current directory and its ancestors, paths outside
 the repository root, symbolic links/junctions below that root, worktrees containing
 other registered worktrees, and any worktree with modified, untracked or ignored
 files (including test results). Review or relocate those files before retrying.
 Unregistered folders and empty parent folders are not removed. Close editors and
 stop processes using a candidate worktree before applying cleanup.
+
+`-DeleteMergedBranch` additionally attempts `git branch -d` after a worktree is
+removed, but only if the local branch is an ancestor of the current remote
+default-branch commit. If the remote HEAD is unavailable, its commit is not
+available locally, or Git refuses deletion, the branch is preserved and a
+warning is shown. Squash-merged branches and unmerged commits are preserved.
+The branch deletion is separately subject to `-WhatIf` and `-Confirm`.
 
 ## Development
 
@@ -124,11 +145,10 @@ using the commands below.
 ### Checks
 
 ```powershell
-# Install tooling once
-$dependencies = Import-PowerShellDataFile .\DevelopmentDependencies.psd1
-foreach ($module in $dependencies.Keys) {
-    Install-Module -Name $module -RequiredVersion $dependencies[$module] -Repository PSGallery -Scope CurrentUser
-}
+# Install verified tooling into a new directory and use it in this shell
+$modules = Join-Path $HOME 'verified-powershell-modules'
+.\Install-DevelopmentDependencies.ps1 -Destination $modules
+$env:PSModulePath = "$modules$([System.IO.Path]::PathSeparator)$env:PSModulePath"
 
 # Lint + tests (same as CI)
 ./Invoke-Checks.ps1
@@ -149,6 +169,8 @@ Project layout:
 | `.github/workflows/ci.yml` | CI on Windows and Linux. |
 | `Invoke-RepositorySecurity.ps1` | Read-only workflow/GitHub audit with opt-in remediation. |
 | `DevelopmentDependencies.psd1` | Exact development module versions used locally and in CI. |
+| `DevelopmentDependencyHashes.psd1` | Reviewed SHA-512 pins for the module archives. |
+| `Install-DevelopmentDependencies.ps1` | Downloads, verifies and extracts pinned development modules. |
 | `.githooks/` | Opt-in pre-commit and pre-push checks. |
 
 Conventions: approved PowerShell verbs, singular nouns, strict mode, `$ErrorActionPreference = 'Stop'`. Add or change a test together with every behavior change.
@@ -194,10 +216,12 @@ commit is trustworthy, scan history for secrets, or assess downloaded code.
 Local workflow findings are fixed manually; the script never rewrites YAML.
 
 GitHub checks cover action-source restrictions, SHA pin enforcement, workflow
-token privileges, Dependabot updates/alerts, secret scanning/push protection, and
-private vulnerability reporting. `-Apply` can enable those features and restrict
-actions to GitHub-owned sources (preserving disabled Actions and local-only
-policies). This removes third-party allowlist exceptions; review the preview
+token privileges and PR approval, Dependabot updates/alerts, secret scanning/push protection, and
+private vulnerability reporting, and automatic deletion of merged head branches.
+`-Apply` can enable those features and restrict actions to GitHub-owned sources
+plus `ossf/scorecard-action@*` (preserving disabled Actions and local-only
+policies). SHA pin enforcement remains required. This replaces other third-party
+allowlist exceptions; review the preview
 before applying to other repositories. Unsupported or inaccessible features are
 reported rather than silently treated as secure.
 
@@ -212,12 +236,34 @@ bypass permissions. Choose review requirements appropriate for the number of
 maintainers: requiring another person's approval can block a solo maintainer.
 CODEOWNERS does not enforce reviews without a corresponding branch rule.
 
-Workflow actions are pinned to verified 40-character Git commit SHAs, not SHA-256
-or SHA-512 strings. Dependabot proposes action updates; review both the commit and
-the release before merging. Exact PowerShell module versions improve
-reproducibility but are not cryptographic integrity pins or a transitive lockfile.
-Review module upgrades separately. CI grants only `contents: read` to its checks
-job, does not persist Git credentials, and limits runtime and artifact retention.
+Workflow actions are pinned to 40-character Git commit SHAs. Dependabot groups
+weekly action version updates and waits seven days after release; security updates
+are not delayed by the cooldown. Review the commit and release before merging.
+Scorecard runs on main pushes and weekly, without publishing to the Scorecard API;
+its JSON report is a short-lived GitHub Actions artifact. The pinned Scorecard
+action itself references a container image by tag, so its image is not protected
+by the action's Git SHA pin. Restricted Actions policies need the Scorecard
+exception above. Dependency review runs on pull requests and requires GitHub's
+dependency graph; it does not inspect the PowerShell data-file dependencies.
+
+CI checks each PowerShell Gallery archive against the SHA-512 pin before
+extracting it; no implicit dependencies are downloaded. The current pins were
+recorded from Gallery metadata and checked against the downloaded archives.
+They detect later changes but do not independently establish publisher identity
+or prove the original archive was trustworthy. The installer refuses to overwrite
+an existing module version.
+
+Dependabot does not update PowerShell Gallery modules. Periodically review new
+module releases, publishers, package contents, signatures and declared
+dependencies; use a trusted independent checksum or signature where available.
+After review, update each version in both dependency data files and record the
+SHA-512 of the reviewed archive in `DevelopmentDependencyHashes.psd1`, then run
+the verified installer into a fresh directory and run all checks. If a new
+version requires additional modules, pin and review those explicitly rather than
+relying on implicit installation.
+
+CI grants only `contents: read` to its checks jobs, does not persist Git
+credentials, and limits runtime and artifact retention.
 
 Pre-commit runs the local security audit, lint, and staged whitespace checks;
 pre-push runs the full checks. Hooks inspect the **working tree**, not an isolated

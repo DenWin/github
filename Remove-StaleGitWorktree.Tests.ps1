@@ -55,6 +55,51 @@ Describe 'Stale worktree cleanup' {
             Should -Not -BeNullOrEmpty
     }
 
+    It 'deletes an opted-in branch only after it is merged into the remote default branch' {
+        Remove-StaleRepositoryWorktree -RepositoryRoot $fixture.Repository -Apply -DeleteMergedBranch
+        Test-Path -LiteralPath $fixture.Worktree | Should -BeFalse
+        Invoke-Git -AllowFailure -Arguments @('-C', $fixture.Bare, 'show-ref', '--verify', '--quiet', 'refs/heads/deleted')
+        $LASTEXITCODE | Should -Be 1
+    }
+
+    It 'preserves unmerged commits even if the stale upstream contains them' {
+        Invoke-Git -Arguments @(
+            '-C', $fixture.Worktree, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+            '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'Unmerged'
+        ) | Out-Null
+        Invoke-Git -Arguments @(
+            '-C', $fixture.Bare, 'update-ref', 'refs/remotes/origin/deleted', 'refs/heads/deleted'
+        )
+        Remove-StaleRepositoryWorktree -RepositoryRoot $fixture.Repository -Apply -DeleteMergedBranch
+        Test-Path -LiteralPath $fixture.Worktree | Should -BeFalse
+        Invoke-Git -Arguments @('-C', $fixture.Bare, 'show-ref', '--verify', 'refs/heads/deleted') |
+            Should -Not -BeNullOrEmpty
+    }
+
+    It 'preserves the branch when the remote default branch cannot be determined' {
+        Invoke-Git -Arguments @('-C', $fixture.Remote, 'symbolic-ref', 'HEAD', 'refs/heads/missing')
+        Remove-StaleRepositoryWorktree -RepositoryRoot $fixture.Repository -Apply -DeleteMergedBranch
+        Test-Path -LiteralPath $fixture.Worktree | Should -BeFalse
+        Invoke-Git -Arguments @('-C', $fixture.Bare, 'show-ref', '--verify', 'refs/heads/deleted') |
+            Should -Not -BeNullOrEmpty
+        Should -Invoke Write-Warning -ParameterFilter { $Message -like '*default branch*preserved*' }
+    }
+
+    It 'previews opted-in branch deletion without removing anything' {
+        Remove-StaleRepositoryWorktree -RepositoryRoot $fixture.Repository -DeleteMergedBranch
+        Test-Path -LiteralPath $fixture.Worktree | Should -BeTrue
+        Invoke-Git -Arguments @('-C', $fixture.Bare, 'show-ref', '--verify', 'refs/heads/deleted') |
+            Should -Not -BeNullOrEmpty
+        Should -Invoke Write-Host -ParameterFilter { $Object -like '*would attempt safe branch deletion*' }
+    }
+
+    It 'honors WhatIf for opted-in branch deletion' {
+        Invoke-WorktreeCleanup -TargetDirectory $fixture.Repository -Apply -DeleteMergedBranch -WhatIf
+        Test-Path -LiteralPath $fixture.Worktree | Should -BeTrue
+        Invoke-Git -Arguments @('-C', $fixture.Bare, 'show-ref', '--verify', 'refs/heads/deleted') |
+            Should -Not -BeNullOrEmpty
+    }
+
     It 'honors WhatIf when applying' {
         Remove-StaleRepositoryWorktree -RepositoryRoot $fixture.Repository -Apply -WhatIf
         Test-Path -LiteralPath $fixture.Worktree | Should -BeTrue
@@ -138,6 +183,13 @@ Describe 'Stale worktree cleanup' {
         { Remove-StaleRepositoryWorktree -RepositoryRoot $fixture.Repository -Apply 2>$null } |
             Should -Throw '*Git command failed*'
         Test-Path -LiteralPath $fixture.Worktree | Should -BeTrue
+    }
+
+    It 'keeps worktrees when origin returns no branches' {
+        Invoke-Git -Arguments @('-C', $fixture.Remote, 'update-ref', '-d', 'refs/heads/main')
+        Remove-StaleRepositoryWorktree -RepositoryRoot $fixture.Repository -Apply
+        Test-Path -LiteralPath $fixture.Worktree | Should -BeTrue
+        Should -Invoke Write-Warning -Times 1 -ParameterFilter { $Message -like '*no branches*refusing cleanup*' }
     }
 
     It 'discovers repositories directly below a chosen target' {

@@ -197,6 +197,81 @@ Describe 'Unavailable GitHub API checks' {
     }
 }
 
+Describe 'Workflow token approval policy' {
+    BeforeEach {
+        $script:workflowPolicy = @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $false }
+        Mock Invoke-SecurityApi {
+            param ($Endpoint)
+            if ($Endpoint -eq 'repos/owner/repo/actions/permissions/workflow') {
+                return [pscustomobject]@{ Success = $true; Data = $workflowPolicy; Error = $null }
+            }
+            [pscustomobject]@{ Success = $false; Data = $null; Error = 'HTTP 403' }
+        }
+    }
+
+    It 'accepts read-only permissions with PR approval disabled' {
+        @(Get-GitHubSecurityFinding -Repository owner/repo).Id | Should -Not -Contain 'github.workflow-token'
+    }
+
+    It 'reports and offers to disable PR approval even with a read-only default token' {
+        $script:workflowPolicy.can_approve_pull_request_reviews = $true
+        $finding = Get-GitHubSecurityFinding -Repository owner/repo | Where-Object Id -EQ 'github.workflow-token'
+        $finding.Status | Should -Be 'Fail'
+        $finding.Fix.Body.can_approve_pull_request_reviews | Should -BeFalse
+        $finding.Fix.Body.default_workflow_permissions | Should -Be 'read'
+    }
+
+    It 'reports a missing approval setting as unknown without a fix' {
+        $script:workflowPolicy.Remove('can_approve_pull_request_reviews')
+        $finding = Get-GitHubSecurityFinding -Repository owner/repo | Where-Object Id -EQ 'github.workflow-token'
+        $finding.Status | Should -Be 'Unknown'
+        $finding.Fix | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Repository action sources and merged branch deletion' {
+    BeforeEach {
+        $script:sourcePolicy = @{
+            github_owned_allowed = $true
+            verified_allowed = $false
+            patterns_allowed = @('ossf/scorecard-action@*')
+        }
+        $script:deleteMerged = $true
+        Mock Invoke-SecurityApi {
+            param ($Endpoint)
+            $data = switch ($Endpoint) {
+                'repos/owner/repo/actions/permissions' {
+                    @{ enabled = $true; allowed_actions = 'selected'; sha_pinning_required = $true }
+                }
+                'repos/owner/repo/actions/permissions/selected-actions' { $sourcePolicy }
+                'repos/owner/repo' { @{ delete_branch_on_merge = $deleteMerged; default_branch = 'main' } }
+                default { $null }
+            }
+            if ($null -ne $data) { return [pscustomobject]@{ Success = $true; Data = $data; Error = $null } }
+            [pscustomobject]@{ Success = $false; Data = $null; Error = 'HTTP 403' }
+        }
+    }
+
+    It 'accepts only the Scorecard exception alongside GitHub-owned actions' {
+        @(Get-GitHubSecurityFinding -Repository owner/repo).Id | Should -Not -Contain 'github.action-sources'
+        $script:sourcePolicy.patterns_allowed = @('ossf/scorecard-action@*', 'other/action@*')
+        $finding = Get-GitHubSecurityFinding -Repository owner/repo | Where-Object Id -EQ 'github.action-sources'
+        $finding.Status | Should -Be 'Fail'
+        $finding.Fix.Body.patterns_allowed | Should -Be @('ossf/scorecard-action@*')
+    }
+
+    It 'offers to enable automatic deletion when disabled' {
+        $script:deleteMerged = $false
+        $finding = Get-GitHubSecurityFinding -Repository owner/repo | Where-Object Id -EQ 'github.delete-merged-branches'
+        $finding.Status | Should -Be 'Fail'
+        $finding.Fix.Body.delete_branch_on_merge | Should -BeTrue
+    }
+
+    It 'does not report automatic deletion when already enabled' {
+        @(Get-GitHubSecurityFinding -Repository owner/repo).Id | Should -Not -Contain 'github.delete-merged-branches'
+    }
+}
+
 Describe 'Dependabot security updates status' {
     BeforeEach {
         Mock Get-WorkflowSecurityFinding { }

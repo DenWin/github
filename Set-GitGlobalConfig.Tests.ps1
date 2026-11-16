@@ -18,6 +18,7 @@ Describe 'Assert-Precondition' {
 
     It 'throws when gh is not authenticated' {
         Mock Get-Command { 'x' }
+        Mock Invoke-Git { $global:LASTEXITCODE = 0 }
         Mock Invoke-Gh { $global:LASTEXITCODE = 1 }
         { Assert-Precondition } | Should -Throw '*not authenticated*'
     }
@@ -25,7 +26,14 @@ Describe 'Assert-Precondition' {
     It 'passes when everything is available' {
         Mock Get-Command { 'x' }
         Mock Invoke-Gh { $global:LASTEXITCODE = 0 }
+        Mock Invoke-Git { $global:LASTEXITCODE = 0 }
         { Assert-Precondition } | Should -Not -Throw
+    }
+
+    It 'fails before configuration when Git Credential Manager is missing on Windows' -Skip:(-not $IsWindows) {
+        Mock Get-Command { 'x' }
+        Mock Invoke-Git { $global:LASTEXITCODE = 1 }
+        { Assert-Precondition } | Should -Throw '*Git Credential Manager is not available*'
     }
 }
 
@@ -77,8 +85,34 @@ Describe 'Get-GitConfigPlan' {
         @{ Key = 'merge.conflictStyle'; Value = 'zdiff3' }
         @{ Key = 'core.editor'; Value = 'code --wait' }
         @{ Key = 'init.defaultBranch'; Value = 'main' }
+        @{ Key = 'transfer.fsckObjects'; Value = 'true' }
+        @{ Key = 'protocol.file.allow'; Value = 'user' }
+        @{ Key = 'push.followTags'; Value = 'true' }
+        @{ Key = 'fetch.writeCommitGraph'; Value = 'true' }
     ) {
         ($plan | Where-Object Key -EQ $Key).Value | Should -Be $Value
+    }
+
+    It 'selects Git Credential Manager on Windows only' {
+        $helper = @($plan | Where-Object Key -EQ 'credential.helper')
+        if ($IsWindows) {
+            $helper.Count | Should -Be 1
+            $helper[0].Value | Should -Be 'manager'
+        }
+        else {
+            $helper.Count | Should -Be 0
+        }
+    }
+
+    It 'enables long paths only on Windows' {
+        $setting = @($plan | Where-Object Key -EQ 'core.longpaths')
+        if ($IsWindows) {
+            $setting.Count | Should -Be 1
+            $setting[0].Value | Should -Be 'true'
+        }
+        else {
+            $setting.Count | Should -Be 0
+        }
     }
 }
 
@@ -108,6 +142,47 @@ Describe 'Invoke-GitConfigPlan' {
     It 'throws when git fails' {
         Mock Invoke-Git { $global:LASTEXITCODE = 1 }
         { Invoke-GitConfigPlan -Plan $plan } | Should -Throw "*Failed to set git config 'a.b'*"
+    }
+
+    It 'replaces all global helpers and resets inherited helpers before adding the manager' {
+        $configFile = Join-Path $TestDrive 'gitconfig'
+        $systemFile = Join-Path $TestDrive 'system-gitconfig'
+        $oldGlobal = $env:GIT_CONFIG_GLOBAL
+        $oldSystem = $env:GIT_CONFIG_SYSTEM
+        try {
+            $env:GIT_CONFIG_GLOBAL = $configFile
+            $env:GIT_CONFIG_SYSTEM = $systemFile
+            & git config --file $systemFile credential.helper store
+            & git config --global --add credential.helper store
+            & git config --global --add credential.helper cache
+            $helperPlan = @([pscustomobject]@{ Key = 'credential.helper'; Value = 'manager'; Section = 'Security' })
+            Invoke-GitConfigPlan -Plan $helperPlan
+            Invoke-GitConfigPlan -Plan $helperPlan
+            $values = @(& git config --global --get-all credential.helper)
+            $values.Count | Should -Be 2
+            $values[0] | Should -Be ''
+            $values[1] | Should -Be 'manager'
+        }
+        finally {
+            $env:GIT_CONFIG_GLOBAL = $oldGlobal
+            $env:GIT_CONFIG_SYSTEM = $oldSystem
+        }
+    }
+
+    It 'previews both credential helper operations without writing' {
+        Mock Invoke-Git { }
+        Mock Write-Host { }
+        $helperPlan = @([pscustomobject]@{ Key = 'credential.helper'; Value = 'manager'; Section = 'Security' })
+        Invoke-GitConfigPlan -Plan $helperPlan -DryRun
+        Should -Invoke Invoke-Git -Times 0 -Exactly
+        Should -Invoke Write-Host -Times 2 -Exactly
+    }
+
+    It 'stops if resetting the inherited credential helpers fails' {
+        Mock Invoke-Git { $global:LASTEXITCODE = 1 }
+        $helperPlan = @([pscustomobject]@{ Key = 'credential.helper'; Value = 'manager'; Section = 'Security' })
+        { Invoke-GitConfigPlan -Plan $helperPlan } | Should -Throw "*Failed to reset*credential.helper*"
+        Should -Invoke Invoke-Git -Times 1 -Exactly
     }
 }
 
