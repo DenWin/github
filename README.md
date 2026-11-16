@@ -72,6 +72,9 @@ Resulting layout:
 Behavior:
 
 - Existing bare repositories are fetched with `--prune`; existing worktrees are never modified.
+- Local branches without tracking configuration are set to track the matching origin
+  branch, including branches from a bare clone and already-registered worktrees.
+  Explicit tracking configuration is preserved; `-DryRun` only previews missing upstreams.
 - `HEAD` and `dependabot/*` branches are ignored.
 - A path that exists but is not a registered worktree is skipped with a warning.
 - In dry-run mode, repositories that are not cloned yet are reported as "would clone" (their branches are unknown), and already-cloned repositories use the branches from the last fetch.
@@ -197,6 +200,10 @@ actions to GitHub-owned sources (preserving disabled Actions and local-only
 policies). This removes third-party allowlist exceptions; review the preview
 before applying to other repositories. Unsupported or inaccessible features are
 reported rather than silently treated as secure.
+
+Dependabot security updates are checked through the dedicated
+`automated-security-fixes` endpoint. Disabled or paused updates produce a
+remediable finding; inaccessible or incomplete status responses remain `Unknown`.
 
 Branch protection is deliberately a **manual-review finding**, even when a
 ruleset exists. In GitHub Settings > Rules > Rulesets, protect the default branch

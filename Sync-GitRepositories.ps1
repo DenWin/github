@@ -163,7 +163,7 @@ function Get-RemoteBranch {
 
     $branches = Invoke-Git -AllowFailure -Arguments @(
         '-C', $BareRepository,
-        'for-each-ref', '--format=%(refname:strip=3)', 'refs/remotes/origin/*'
+        'for-each-ref', '--format=%(refname:strip=3)', 'refs/remotes/origin/'
     )
 
     if ($LASTEXITCODE -ne 0) {
@@ -175,6 +175,40 @@ function Get-RemoteBranch {
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
             Sort-Object -Unique
     )
+}
+
+
+function Set-BranchUpstream {
+    param (
+        [Parameter(Mandatory)]
+        [string] $BareRepository,
+
+        [Parameter(Mandatory)]
+        [string] $Branch,
+
+        [switch] $DryRun
+    )
+
+    foreach ($setting in @('remote', 'merge')) {
+        Invoke-Git -AllowFailure -Arguments @(
+            '-C', $BareRepository, 'config', '--get', "branch.$Branch.$setting"
+        ) | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+        if ($LASTEXITCODE -ne 1) {
+            throw "Could not read upstream configuration for '$Branch'."
+        }
+    }
+
+    if ($DryRun) {
+        Write-DryRun "UPSTREAM $Branch -> origin/$Branch"
+        return
+    }
+
+    Invoke-Git -Arguments @(
+        '-C', $BareRepository, 'branch', "--set-upstream-to=origin/$Branch", '--', $Branch
+    ) | Out-Null
 }
 
 
@@ -199,6 +233,11 @@ function New-BranchWorktree {
     #   <repository>\feature\login
     $worktreePath = Join-Path $RepositoryRoot $Branch
 
+    $localBranchExists = Test-LocalGitBranch -BareRepository $BareRepository -Branch $Branch
+    if ($localBranchExists) {
+        Set-BranchUpstream -BareRepository $BareRepository -Branch $Branch -DryRun:$DryRun
+    }
+
     if (Test-ExistingWorktree -BareRepository $BareRepository -WorktreePath $worktreePath) {
         Write-Host "  SKIP     $Branch - worktree already registered" -ForegroundColor DarkGray
         return
@@ -211,8 +250,6 @@ function New-BranchWorktree {
         )
         return
     }
-
-    $localBranchExists = Test-LocalGitBranch -BareRepository $BareRepository -Branch $Branch
 
     if ($localBranchExists) {
         $message = "WORKTREE $Branch"
@@ -313,9 +350,9 @@ function Sync-Repository {
         Invoke-Git -Arguments @('-C', $bareRepository, 'fetch', 'origin', '--prune')
     }
 
-    $branches = Get-RemoteBranch -BareRepository $bareRepository
+    $branches = @(Get-RemoteBranch -BareRepository $bareRepository)
 
-    if ($null -eq $branches) {
+    if ($LASTEXITCODE -ne 0) {
         Write-Warning "Could not read branches for $($Repository.nameWithOwner)."
         return
     }

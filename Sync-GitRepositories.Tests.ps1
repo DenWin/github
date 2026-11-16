@@ -227,6 +227,81 @@ Describe 'Sync-Repository' {
             Sync-Repository -Repository $repo -TargetDirectory $TestDrive
             Should -Invoke New-BranchWorktree -Times 0 -Exactly
         }
+
+        It 'creates a worktree when the repository has only one remote branch' {
+            Mock Invoke-Git { $global:LASTEXITCODE = 0; 'true' }
+            Mock Get-RemoteBranch { 'main' }
+            Sync-Repository -Repository $repo -TargetDirectory $TestDrive
+            Should -Invoke New-BranchWorktree -Times 1 -Exactly -ParameterFilter { $Branch -eq 'main' }
+        }
+
+        It 'warns and skips worktrees when reading remote branches fails' {
+            Mock Invoke-Git { $global:LASTEXITCODE = 0; 'true' }
+            Mock Get-RemoteBranch { $global:LASTEXITCODE = 1; $null }
+            Sync-Repository -Repository $repo -TargetDirectory $TestDrive
+            Should -Invoke Write-Warning -Times 1 -Exactly -ParameterFilter { $Message -like '*Could not read branches*' }
+            Should -Invoke New-BranchWorktree -Times 0 -Exactly
+        }
+    }
+}
+
+Describe 'Bare clone branch integration' {
+    BeforeEach {
+        $root = Join-Path $TestDrive ([guid]::NewGuid().ToString())
+        $source = Join-Path $root 'source'
+        $script:repositoryRoot = Join-Path $root 'managed'
+        $script:bareRepository = Join-Path $repositoryRoot '.git'
+        Invoke-Git -Arguments @('init', '--initial-branch=main', $source) | Out-Null
+        Invoke-Git -Arguments @(
+            '-C', $source, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+            '-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'Initial'
+        ) | Out-Null
+        Invoke-Git -Arguments @('-C', $source, 'branch', 'feature/login')
+        Invoke-Git -Arguments @('clone', '--bare', $source, $bareRepository) 2>$null
+        Invoke-Git -Arguments @(
+            '-C', $bareRepository, 'config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'
+        )
+        Invoke-Git -Arguments @('-C', $bareRepository, 'fetch', 'origin') 2>$null
+        Mock Write-Host { }
+    }
+
+    It 'enumerates nested remote branches from real Git refs' {
+        $branches = @(Get-RemoteBranch -BareRepository $bareRepository)
+        $branches | Should -Contain 'feature/login'
+        $branches | Should -Contain 'main'
+    }
+
+    It 'configures origin tracking for a clone-created local branch' {
+        New-BranchWorktree -BareRepository $bareRepository -RepositoryRoot $repositoryRoot -RepositoryName managed -Branch main
+        Invoke-Git -Arguments @(
+            '-C', $bareRepository, 'for-each-ref', '--format=%(upstream)', 'refs/heads/main'
+        ) | Should -Be 'refs/remotes/origin/main'
+    }
+
+    It 'preserves an explicitly configured upstream' {
+        Invoke-Git -Arguments @('-C', $bareRepository, 'branch', '--set-upstream-to=origin/feature/login', 'main') | Out-Null
+        New-BranchWorktree -BareRepository $bareRepository -RepositoryRoot $repositoryRoot -RepositoryName managed -Branch main
+        Invoke-Git -Arguments @(
+            '-C', $bareRepository, 'for-each-ref', '--format=%(upstream)', 'refs/heads/main'
+        ) | Should -Be 'refs/remotes/origin/feature/login'
+    }
+
+    It 'repairs missing tracking for an already registered worktree' {
+        Invoke-Git -Arguments @(
+            '-C', $bareRepository, 'worktree', 'add', (Join-Path $repositoryRoot 'main'), 'main'
+        ) 2>$null | Out-Null
+        New-BranchWorktree -BareRepository $bareRepository -RepositoryRoot $repositoryRoot -RepositoryName managed -Branch main
+        Invoke-Git -Arguments @(
+            '-C', $bareRepository, 'for-each-ref', '--format=%(upstream)', 'refs/heads/main'
+        ) | Should -Be 'refs/remotes/origin/main'
+    }
+
+    It 'does not configure tracking or create a worktree during a dry run' {
+        New-BranchWorktree -BareRepository $bareRepository -RepositoryRoot $repositoryRoot -RepositoryName managed -Branch main -DryRun
+        Invoke-Git -Arguments @(
+            '-C', $bareRepository, 'for-each-ref', '--format=%(upstream)', 'refs/heads/main'
+        ) | Should -BeNullOrEmpty
+        Test-Path -LiteralPath (Join-Path $repositoryRoot 'main') | Should -BeFalse
     }
 }
 

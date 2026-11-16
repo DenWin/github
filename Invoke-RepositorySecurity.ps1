@@ -202,10 +202,10 @@ function Get-GitHubSecurityFinding {
             }
         }
         @{
-            Id = 'github.dependabot'; Endpoint = $base
-            Required = @('security_and_analysis.dependabot_security_updates.status')
-            Test = { param ($data) $data['security_and_analysis']['dependabot_security_updates']['status'] -eq 'enabled' }
-            Message = 'Enable Dependabot security updates (vulnerability alerts must also be enabled).'
+            Id = 'github.dependabot'; Endpoint = "$base/automated-security-fixes"
+            Required = @('enabled', 'paused')
+            Test = { param ($data) $data['enabled'] -eq $true -and $data['paused'] -eq $false }
+            Message = 'Enable or resume Dependabot security updates (vulnerability alerts must also be enabled).'
             Fix = @{ Endpoint = "$base/automated-security-fixes"; Method = 'PUT' }
         }
         @{

@@ -197,6 +197,62 @@ Describe 'Unavailable GitHub API checks' {
     }
 }
 
+Describe 'Dependabot security updates status' {
+    BeforeEach {
+        Mock Get-WorkflowSecurityFinding { }
+        $script:dependabotState = @{ enabled = $true; paused = $false }
+        $script:securityWrites = [System.Collections.Generic.List[string]]::new()
+        Mock Invoke-SecurityApi {
+            param ($Endpoint, $Method)
+            if ($Method -and $Method -ne 'GET') {
+                $securityWrites.Add("$Method $Endpoint")
+                return [pscustomobject]@{ Success = $true; Data = $null; Error = $null }
+            }
+            if ($Endpoint -eq 'repos/owner/repo/automated-security-fixes') {
+                return [pscustomobject]@{ Success = $true; Data = $dependabotState; Error = $null }
+            }
+            [pscustomobject]@{ Success = $false; Data = $null; Error = 'HTTP 403' }
+        }
+    }
+
+    It 'accepts enabled and unpaused security updates from the dedicated endpoint' {
+        $findings = @(Get-GitHubSecurityFinding -Repository owner/repo)
+        $findings.Id | Should -Not -Contain 'github.dependabot'
+        Should -Invoke Invoke-SecurityApi -Times 1 -Exactly -ParameterFilter {
+            $Endpoint -eq 'repos/owner/repo/automated-security-fixes' -and (-not $Method -or $Method -eq 'GET')
+        }
+    }
+
+    It 'offers remediation when security updates are <State>' -ForEach @(
+        @{ State = 'disabled'; Enabled = $false; Paused = $false }
+        @{ State = 'paused'; Enabled = $true; Paused = $true }
+    ) {
+        $script:dependabotState = @{ enabled = $Enabled; paused = $Paused }
+        $finding = Get-GitHubSecurityFinding -Repository owner/repo | Where-Object Id -EQ 'github.dependabot'
+        $finding.Status | Should -Be 'Fail'
+        $finding.Fix.Endpoint | Should -Be 'repos/owner/repo/automated-security-fixes'
+        $finding.Fix.Method | Should -Be 'PUT'
+        $securityWrites.Count | Should -Be 0
+    }
+
+    It 'reports missing status fields as unknown without offering a fix' {
+        $script:dependabotState = @{ enabled = $true }
+        $finding = Get-GitHubSecurityFinding -Repository owner/repo | Where-Object Id -EQ 'github.dependabot'
+        $finding.Status | Should -Be 'Unknown'
+        $finding.Fix | Should -BeNullOrEmpty
+    }
+
+    It 'enables alerts before applying the security updates remediation' {
+        $script:dependabotState = @{ enabled = $false; paused = $false }
+        $findings = @(Invoke-RepositorySecurity -Repository owner/repo -Apply -Confirm:$false)
+        ($findings | Where-Object Id -EQ 'github.dependabot').Status | Should -Be 'Applied'
+        @($securityWrites) | Should -Be @(
+            'PUT repos/owner/repo/vulnerability-alerts'
+            'PUT repos/owner/repo/automated-security-fixes'
+        )
+    }
+}
+
 Describe 'Opt-in local hooks' {
     BeforeEach {
         Mock Get-WorkflowSecurityFinding { }
