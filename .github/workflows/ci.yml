@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions: {}
 
@@ -48,7 +49,7 @@ jobs:
           $modules = Join-Path $env:RUNNER_TEMP 'verified-powershell-modules'
           ./Install-DevelopmentDependencies.ps1 -Destination $modules
           $env:PSModulePath = "$modules$([System.IO.Path]::PathSeparator)$env:PSModulePath"
-          ./Invoke-Checks.ps1
+          ./Invoke-Checks.ps1 -Full
 
       - name: Upload test results
         if: always()
@@ -58,3 +59,26 @@ jobs:
           path: TestResults/
           retention-days: 7
           include-hidden-files: false
+
+  # Milestone tier: proves every test can fail by running it against stubbed
+  # copies of its function. Too slow for every pull request, so it runs when
+  # main changes and on demand (Actions > CI > Run workflow) before a release.
+  proof:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install verified modules and prove tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $modules = Join-Path $env:RUNNER_TEMP 'verified-powershell-modules'
+          ./Install-DevelopmentDependencies.ps1 -Destination $modules
+          $env:PSModulePath = "$modules$([System.IO.Path]::PathSeparator)$env:PSModulePath"
+          ./Invoke-Checks.ps1 -SkipLint -SkipTests -Proof

@@ -1,84 +1,78 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '5.0.0' }
 
+<#
+.SYNOPSIS
+    Tests Git identity resolution and the global configuration plan.
+.DESCRIPTION
+    Pure steps (profile parsing, name selection, plan and command building) are
+    tested with plain data. Applying the plan runs real Git against a temporary
+    GIT_CONFIG_GLOBAL file. Nothing is mocked.
+.EXAMPLE
+    Invoke-Pester -Path .\Set-GitGlobalConfig.Tests.ps1
+    Runs only the global Git configuration tests.
+.INPUTS
+    None. Run this file through Pester rather than invoking it directly.
+.OUTPUTS
+    None. Pester reports results; use Invoke-Pester -PassThru for result objects.
+.NOTES
+    Requires PowerShell 7, Pester and Git. Real global Git configuration is never
+    written. Assert-Precondition, Get-GitHubIdentity and Invoke-Main depend on an
+    installed and authenticated gh and are not tested here.
+#>
 BeforeAll {
     . "$PSScriptRoot\Set-GitGlobalConfig.ps1"
+    . "$PSScriptRoot\GitTooling.TestHelpers.ps1"
 }
 
-Describe 'Assert-Precondition' {
-    It 'throws when git is missing' {
-        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'git' }
-        { Assert-Precondition } | Should -Throw '*Git is not installed*'
+Describe 'ConvertFrom-GitHubUser' {
+    It 'returns the trimmed profile name and the noreply email' {
+        $identity = ConvertFrom-GitHubUser -Json '{"id":1,"login":"DenWin","name":" Dennis Winter "}'
+        $identity.Name | Should -BeExactly 'Dennis Winter'
+        $identity.Email | Should -BeExactly '1+DenWin@users.noreply.github.com'
     }
 
-    It 'throws when gh is missing' {
-        Mock Get-Command { 'git' } -ParameterFilter { $Name -eq 'git' }
-        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'gh' }
-        { Assert-Precondition } | Should -Throw '*GitHub CLI (gh) is not installed*'
-    }
-
-    It 'throws when gh is not authenticated' {
-        Mock Get-Command { 'x' }
-        Mock Invoke-Git { $global:LASTEXITCODE = 0 }
-        Mock Invoke-Gh { $global:LASTEXITCODE = 1 }
-        { Assert-Precondition } | Should -Throw '*not authenticated*'
-    }
-
-    It 'passes when everything is available' {
-        Mock Get-Command { 'x' }
-        Mock Invoke-Gh { $global:LASTEXITCODE = 0 }
-        Mock Invoke-Git { $global:LASTEXITCODE = 0 }
-        { Assert-Precondition } | Should -Not -Throw
-    }
-
-    It 'fails before configuration when Git Credential Manager is missing on Windows' -Skip:(-not $IsWindows) {
-        Mock Get-Command { 'x' }
-        Mock Invoke-Git { $global:LASTEXITCODE = 1 }
-        { Assert-Precondition } | Should -Throw '*Git Credential Manager is not available*'
-    }
-}
-
-Describe 'Get-GitHubIdentity' {
-    It 'returns profile name and noreply email' {
-        Mock Invoke-Gh { $global:LASTEXITCODE = 0; '{"id":1,"login":"DenWin","name":" Dennis Winter "}' }
-        $identity = Get-GitHubIdentity
-        $identity.Name | Should -Be 'Dennis Winter'
-        $identity.Email | Should -Be '1+DenWin@users.noreply.github.com'
-    }
-
-    It 'falls back to the login when the profile has no name' -ForEach @(
-        @{ Json = '{"id":1,"login":"DenWin","name":null}' }
-        @{ Json = '{"id":1,"login":"DenWin","name":""}' }
+    It 'falls back to the login for the name <Name>' -ForEach @(
+        @{ Name = 'null'; Json = '{"id":1,"login":"DenWin","name":null}' }
+        @{ Name = 'empty'; Json = '{"id":1,"login":"DenWin","name":""}' }
+        @{ Name = 'missing'; Json = '{"id":1,"login":"DenWin"}' }
     ) {
-        Mock Invoke-Gh { $global:LASTEXITCODE = 0; $Json }
-        (Get-GitHubIdentity).Name | Should -Be 'DenWin'
+        (ConvertFrom-GitHubUser -Json $Json).Name | Should -BeExactly 'DenWin'
     }
 
-    It 'throws on gh failure' {
-        Mock Invoke-Gh { $global:LASTEXITCODE = 1 }
-        { Get-GitHubIdentity } | Should -Throw '*user profile*'
+    It 'throws when <Name> is missing' -ForEach @(
+        @{ Name = 'id'; Json = '{"login":"DenWin"}' }
+        @{ Name = 'login'; Json = '{"id":1,"login":" "}' }
+    ) {
+        { ConvertFrom-GitHubUser -Json $Json } | Should -Throw '*noreply*'
     }
+}
 
-    It 'throws when id or login is missing' {
-        Mock Invoke-Gh { $global:LASTEXITCODE = 0; '{"name":"x"}' }
-        { Get-GitHubIdentity } | Should -Throw '*noreply*'
+Describe 'Select-GitUserName' {
+    It 'returns <Expected> for user name <UserName>' -ForEach @(
+        @{ UserName = 'Jane'; Expected = 'Jane' }
+        @{ UserName = ''; Expected = 'Profile Name' }
+        @{ UserName = ' '; Expected = 'Profile Name' }
+    ) {
+        Select-GitUserName -UserName $UserName -IdentityName 'Profile Name' | Should -BeExactly $Expected
     }
 }
 
 Describe 'Get-GitConfigPlan' {
     BeforeAll {
-        $script:plan = Get-GitConfigPlan -UserName 'Jane' -Email 'j@x.com'
+        $script:plan = Get-GitConfigPlan -UserName 'Jane' -Email 'j@x.com' -Windows $false
     }
 
     It 'contains identity values' {
-        ($plan | Where-Object Key -EQ 'user.name').Value | Should -Be 'Jane'
-        ($plan | Where-Object Key -EQ 'user.email').Value | Should -Be 'j@x.com'
+        ($plan | Where-Object Key -EQ 'user.name').Value | Should -BeExactly 'Jane'
+        ($plan | Where-Object Key -EQ 'user.email').Value | Should -BeExactly 'j@x.com'
     }
 
     It 'has unique keys' {
-        ($plan.Key | Select-Object -Unique).Count | Should -Be $plan.Count
+        $windowsPlan = Get-GitConfigPlan -UserName 'Jane' -Email 'j@x.com' -Windows $true
+        ($windowsPlan.Key | Select-Object -Unique).Count | Should -Be $windowsPlan.Count
     }
 
-    It 'contains expected settings' -ForEach @(
+    It 'sets <Key> to <Value>' -ForEach @(
         @{ Key = 'core.autocrlf'; Value = 'input' }
         @{ Key = 'pull.rebase'; Value = 'true' }
         @{ Key = 'push.autoSetupRemote'; Value = 'true' }
@@ -90,140 +84,87 @@ Describe 'Get-GitConfigPlan' {
         @{ Key = 'push.followTags'; Value = 'true' }
         @{ Key = 'fetch.writeCommitGraph'; Value = 'true' }
     ) {
-        ($plan | Where-Object Key -EQ $Key).Value | Should -Be $Value
+        ($plan | Where-Object Key -EQ $Key).Value | Should -BeExactly $Value
     }
 
-    It 'selects Git Credential Manager on Windows only' {
-        $helper = @($plan | Where-Object Key -EQ 'credential.helper')
-        if ($IsWindows) {
-            $helper.Count | Should -Be 1
-            $helper[0].Value | Should -Be 'manager'
-        }
-        else {
-            $helper.Count | Should -Be 0
-        }
-    }
-
-    It 'enables long paths only on Windows' {
-        $setting = @($plan | Where-Object Key -EQ 'core.longpaths')
-        if ($IsWindows) {
-            $setting.Count | Should -Be 1
-            $setting[0].Value | Should -Be 'true'
-        }
-        else {
-            $setting.Count | Should -Be 0
-        }
+    It 'adds Git Credential Manager and long paths only on Windows' {
+        $windowsPlan = Get-GitConfigPlan -UserName 'Jane' -Email 'j@x.com' -Windows $true
+        ($windowsPlan | Where-Object Key -EQ 'credential.helper').Value | Should -BeExactly 'manager'
+        ($windowsPlan | Where-Object Key -EQ 'core.longpaths').Value | Should -BeExactly 'true'
+        @($plan | Where-Object Key -In @('credential.helper', 'core.longpaths')).Count | Should -Be 0
     }
 }
 
-Describe 'Invoke-GitConfigPlan' {
-    BeforeAll {
+Describe 'Get-GitConfigCommand' {
+    It 'sets an ordinary key in one command' {
+        $command = @(Get-GitConfigCommand -Plan @([pscustomobject]@{ Key = 'c.d'; Value = 'x y' }))
+        $command.Count | Should -Be 1
+        $command[0].Arguments | Should -BeExactly @('config', '--global', 'c.d', 'x y')
+        $command[0].FailureMessage | Should -BeExactly "Failed to set git config 'c.d'."
+    }
+
+    It 'resets inherited credential helpers before adding the planned helper' {
+        $command = @(Get-GitConfigCommand -Plan @([pscustomobject]@{ Key = 'credential.helper'; Value = 'manager' }))
+        $command.Count | Should -Be 2
+        $command[0].Arguments | Should -BeExactly @('config', '--global', '--replace-all', 'credential.helper', '')
+        $command[0].FailureMessage | Should -BeLike '*reset*'
+        $command[1].Arguments | Should -BeExactly @('config', '--global', '--add', 'credential.helper', 'manager')
+    }
+}
+
+Describe 'Format-GitCommand' {
+    It 'quotes the final argument: <Expected>' -ForEach @(
+        @{ Arguments = @('config', '--global', 'c.d', 'x y'); Expected = "git config --global c.d 'x y'" }
+        @{ Arguments = @('config', '--global', '--replace-all', 'credential.helper', ''); Expected = "git config --global --replace-all credential.helper ''" }
+    ) {
+        Format-GitCommand -Arguments $Arguments | Should -BeExactly $Expected
+    }
+}
+
+Describe 'Invoke-GitConfigPlan' -Tag 'Integration' {
+    BeforeEach {
+        $script:configFile = Join-Path $TestDrive "gitconfig-$([guid]::NewGuid().ToString('N'))"
+        $script:systemFile = Join-Path $TestDrive "system-$([guid]::NewGuid().ToString('N'))"
+        $script:oldGlobal = $env:GIT_CONFIG_GLOBAL
+        $script:oldSystem = $env:GIT_CONFIG_SYSTEM
+        $env:GIT_CONFIG_GLOBAL = $configFile
+        $env:GIT_CONFIG_SYSTEM = $systemFile
         $script:plan = @(
-            [pscustomobject]@{ Key = 'a.b'; Value = '1'; Section = 'S' }
-            [pscustomobject]@{ Key = 'c.d'; Value = 'x y'; Section = 'S' }
+            [pscustomobject]@{ Key = 'a.b'; Value = '1' }
+            [pscustomobject]@{ Key = 'c.d'; Value = 'x y' }
         )
     }
 
-    It 'writes every entry' {
-        Mock Invoke-Git { $global:LASTEXITCODE = 0 }
+    AfterEach {
+        $env:GIT_CONFIG_GLOBAL = $oldGlobal
+        $env:GIT_CONFIG_SYSTEM = $oldSystem
+    }
+
+    It 'writes every entry to the global configuration' {
         Invoke-GitConfigPlan -Plan $plan
-        Should -Invoke Invoke-Git -Times 2 -Exactly
-        Should -Invoke Invoke-Git -ParameterFilter { $args[2] -eq 'c.d' -and $args[3] -eq 'x y' }
+        Invoke-Git -Arguments @('config', '--global', 'a.b') | Should -BeExactly '1'
+        Invoke-Git -Arguments @('config', '--global', 'c.d') | Should -BeExactly 'x y'
     }
 
-    It 'does not write anything with -DryRun' {
-        Mock Invoke-Git { }
-        Mock Write-Host { }
-        Invoke-GitConfigPlan -Plan $plan -DryRun
-        Should -Invoke Invoke-Git -Times 0 -Exactly
-        Should -Invoke Write-Host -Times 2 -Exactly -ParameterFilter { $Object -like '`[DRY RUN`]*' }
+    It 'previews every command without writing with -DryRun' {
+        $output = Invoke-Captured { Invoke-GitConfigPlan -Plan $plan -DryRun }
+        $output.Host | Should -BeExactly @("[DRY RUN] git config --global a.b '1'", "[DRY RUN] git config --global c.d 'x y'")
+        Test-Path -LiteralPath $configFile | Should -BeFalse
     }
 
-    It 'throws when git fails' {
-        Mock Invoke-Git { $global:LASTEXITCODE = 1 }
-        { Invoke-GitConfigPlan -Plan $plan } | Should -Throw "*Failed to set git config 'a.b'*"
+    It 'stops at the first failing entry' {
+        $badPlan = @([pscustomobject]@{ Key = 'nosection'; Value = '1' }) + $plan
+        { Invoke-GitConfigPlan -Plan $badPlan 2>$null } | Should -Throw "Failed to set git config 'nosection'."
+        Invoke-Git -AllowFailure -Arguments @('config', '--global', 'a.b') | Should -BeNullOrEmpty
     }
 
-    It 'replaces all global helpers and resets inherited helpers before adding the manager' {
-        $configFile = Join-Path $TestDrive 'gitconfig'
-        $systemFile = Join-Path $TestDrive 'system-gitconfig'
-        $oldGlobal = $env:GIT_CONFIG_GLOBAL
-        $oldSystem = $env:GIT_CONFIG_SYSTEM
-        try {
-            $env:GIT_CONFIG_GLOBAL = $configFile
-            $env:GIT_CONFIG_SYSTEM = $systemFile
-            & git config --file $systemFile credential.helper store
-            & git config --global --add credential.helper store
-            & git config --global --add credential.helper cache
-            $helperPlan = @([pscustomobject]@{ Key = 'credential.helper'; Value = 'manager'; Section = 'Security' })
-            Invoke-GitConfigPlan -Plan $helperPlan
-            Invoke-GitConfigPlan -Plan $helperPlan
-            $values = @(& git config --global --get-all credential.helper)
-            $values.Count | Should -Be 2
-            $values[0] | Should -Be ''
-            $values[1] | Should -Be 'manager'
-        }
-        finally {
-            $env:GIT_CONFIG_GLOBAL = $oldGlobal
-            $env:GIT_CONFIG_SYSTEM = $oldSystem
-        }
-    }
-
-    It 'previews both credential helper operations without writing' {
-        Mock Invoke-Git { }
-        Mock Write-Host { }
-        $helperPlan = @([pscustomobject]@{ Key = 'credential.helper'; Value = 'manager'; Section = 'Security' })
-        Invoke-GitConfigPlan -Plan $helperPlan -DryRun
-        Should -Invoke Invoke-Git -Times 0 -Exactly
-        Should -Invoke Write-Host -Times 2 -Exactly
-    }
-
-    It 'stops if resetting the inherited credential helpers fails' {
-        Mock Invoke-Git { $global:LASTEXITCODE = 1 }
-        $helperPlan = @([pscustomobject]@{ Key = 'credential.helper'; Value = 'manager'; Section = 'Security' })
-        { Invoke-GitConfigPlan -Plan $helperPlan } | Should -Throw "*Failed to reset*credential.helper*"
-        Should -Invoke Invoke-Git -Times 1 -Exactly
-    }
-}
-
-Describe 'Invoke-Main' {
-    BeforeEach {
-        Mock Assert-Precondition { }
-        Mock Get-GitHubIdentity { [pscustomobject]@{ Name = 'Profile Name'; Email = 'j@x.com' } }
-        Mock Invoke-GitConfigPlan { }
-        Mock Show-GitConfigResult { }
-        Mock Write-Host { }
-    }
-
-    It 'uses the GitHub profile name when no UserName is given' {
-        Invoke-Main
-        Should -Invoke Invoke-GitConfigPlan -Times 1 -Exactly -ParameterFilter {
-            ($Plan | Where-Object Key -EQ 'user.name').Value -eq 'Profile Name'
-        }
-    }
-
-    It 'prefers an explicit UserName' {
-        Invoke-Main -UserName 'Jane'
-        Should -Invoke Invoke-GitConfigPlan -Times 1 -Exactly -ParameterFilter {
-            ($Plan | Where-Object Key -EQ 'user.name').Value -eq 'Jane'
-        }
-    }
-
-    It 'applies config and shows result' {
-        Invoke-Main -UserName 'Jane'
-        Should -Invoke Invoke-GitConfigPlan -Times 1 -Exactly -ParameterFilter { -not $DryRun }
-        Should -Invoke Show-GitConfigResult -Times 1 -Exactly
-    }
-
-    It 'passes DryRun through and skips the result listing' {
-        Invoke-Main -UserName 'Jane' -DryRun
-        Should -Invoke Invoke-GitConfigPlan -Times 1 -Exactly -ParameterFilter { $DryRun }
-        Should -Invoke Show-GitConfigResult -Times 0 -Exactly
-    }
-
-    It 'stops when preconditions fail' {
-        Mock Assert-Precondition { throw 'nope' }
-        { Invoke-Main -UserName 'Jane' } | Should -Throw 'nope'
-        Should -Invoke Invoke-GitConfigPlan -Times 0 -Exactly
+    It 'replaces all global helpers and resets inherited helpers, idempotently' {
+        Invoke-Git -Arguments @('config', '--file', $systemFile, 'credential.helper', 'store')
+        Invoke-Git -Arguments @('config', '--global', '--add', 'credential.helper', 'store')
+        Invoke-Git -Arguments @('config', '--global', '--add', 'credential.helper', 'cache')
+        $helperPlan = @([pscustomobject]@{ Key = 'credential.helper'; Value = 'manager' })
+        Invoke-GitConfigPlan -Plan $helperPlan
+        Invoke-GitConfigPlan -Plan $helperPlan
+        Invoke-Git -Arguments @('config', '--global', '--get-all', 'credential.helper') | Should -BeExactly @('', 'manager')
     }
 }
