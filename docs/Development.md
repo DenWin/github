@@ -194,7 +194,8 @@ not parse shell semantics, inspect nested local actions, verify commit trust,
 scan history for secrets or assess downloaded code. Fix local findings manually.
 
 GitHub checks cover action-source restrictions, SHA pin enforcement, workflow
-token privileges and PR approval, automatic first-time fork pull-request workflows,
+token privileges and PR approval, fork pull-request workflow approval (only
+contributors new to GitHub),
 Dependabot updates/alerts, secret scanning/push protection, private vulnerability
 reporting and deletion of merged head branches.
 `-Apply` can enable those features and restrict actions to GitHub-owned sources

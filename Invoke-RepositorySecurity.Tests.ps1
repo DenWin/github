@@ -237,7 +237,8 @@ Describe 'Get-GitHubSecurityCheck' {
         @{ Id = 'github.workflow-token'; Name = 'read-only without approval'; Expected = $true; Data = @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $false } }
         @{ Id = 'github.workflow-token'; Name = 'read-only with approval'; Expected = $false; Data = @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $true } }
         @{ Id = 'github.workflow-token'; Name = 'write token'; Expected = $false; Data = @{ default_workflow_permissions = 'write'; can_approve_pull_request_reviews = $false } }
-        @{ Id = 'github.fork-pr-workflows'; Name = 'automatic first-time fork workflows'; Expected = $true; Data = @{ approval_policy = 'first_time_contributors_new_to_github' } }
+        @{ Id = 'github.fork-pr-workflows'; Name = 'approval only for new GitHub users'; Expected = $true; Data = @{ approval_policy = 'first_time_contributors_new_to_github' } }
+        @{ Id = 'github.fork-pr-workflows'; Name = 'approval for all first-time contributors'; Expected = $false; Data = @{ approval_policy = 'first_time_contributors' } }
         @{ Id = 'github.fork-pr-workflows'; Name = 'approval for all external contributors'; Expected = $false; Data = @{ approval_policy = 'all_external_contributors' } }
         @{ Id = 'github.action-sources'; Name = 'only the Scorecard exception'; Expected = $true; Data = @{ github_owned_allowed = $true; verified_allowed = $false; patterns_allowed = @('ossf/scorecard-action@*') } }
         @{ Id = 'github.action-sources'; Name = 'an extra pattern'; Expected = $false; Data = @{ github_owned_allowed = $true; verified_allowed = $false; patterns_allowed = @('ossf/scorecard-action@*', 'x/y@*') } }

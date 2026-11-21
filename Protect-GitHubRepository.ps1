@@ -283,7 +283,7 @@ function Get-GitHubSecurityCheck {
             Id = 'github.fork-pr-workflows'; Endpoint = "$base/actions/permissions/fork-pr-contributor-approval"
             Required = @('approval_policy')
             Test = { param ($data) $data['approval_policy'] -eq 'first_time_contributors_new_to_github' }
-            Message = 'Automatically run workflows for first-time contributors new to GitHub.'
+            Message = 'Require fork pull-request workflow approval only for contributors new to GitHub.'
             Fix = @{ Endpoint = "$base/actions/permissions/fork-pr-contributor-approval"; Method = 'PUT'
                 Body = @{ approval_policy = 'first_time_contributors_new_to_github' }
             }
