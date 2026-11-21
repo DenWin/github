@@ -95,8 +95,8 @@ Describe 'Select-SourceRepository' {
 
 Describe 'Get-RepositoryLayout' {
     It 'places the repository below an owner folder' {
-        $layout = Get-RepositoryLayout -TargetDirectory 'root' -NameWithOwner 'example/github'
-        $layout.RepositoryRoot | Should -BeExactly (Join-Path (Join-Path 'root' 'example') 'github')
+        $layout = Get-RepositoryLayout -TargetDirectory 'root' -NameWithOwner 'Owner/Repo'
+        $layout.RepositoryRoot | Should -BeExactly (Join-Path (Join-Path 'root' 'Owner') 'Repo')
         $layout.BareRepository | Should -BeExactly (Join-Path $layout.RepositoryRoot '.git')
     }
 }

@@ -72,20 +72,20 @@ BeforeAll {
 
 Describe 'Select-DirectoryName' {
     It 'returns <Expected> for <Name> among <Candidate>' -ForEach @(
-        @{ Name = 'example'; Candidate = @('example', 'example'); Expected = 'example' }
-        @{ Name = 'example'; Candidate = @('example', 'other'); Expected = 'example' }
+        @{ Name = 'Owner'; Candidate = @('Owner', 'OWNER'); Expected = 'Owner' }
+        @{ Name = 'Owner'; Candidate = @('Owner', 'Other'); Expected = 'Owner' }
         @{ Name = 'github'; Candidate = @('github'); Expected = 'github' }
     ) {
         Select-DirectoryName -Name $Name -Candidate $Candidate | Should -BeExactly $Expected
     }
 
     It 'returns null when nothing matches' {
-        Select-DirectoryName -Name 'missing' -Candidate @('example') | Should -BeNullOrEmpty
+        Select-DirectoryName -Name 'missing' -Candidate @('Owner') | Should -BeNullOrEmpty
         Select-DirectoryName -Name 'missing' -Candidate @() | Should -BeNullOrEmpty
     }
 
     It 'rejects several case-only matches' {
-        { Select-DirectoryName -Name 'example' -Candidate @('Example', 'EXAMPLE') } | Should -Throw '*Several folders*'
+        { Select-DirectoryName -Name 'OWNER' -Candidate @('Owner', 'owner') } | Should -Throw '*Several folders*'
     }
 }
 
@@ -255,7 +255,7 @@ Describe 'Remove-StaleRepositoryWorktree' -Tag Integration {
 
     It 'preserves unmerged commits even if the stale upstream contains them' {
         Invoke-Git -Arguments @(
-            '-C', $fixture.Worktree, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+            '-C', $fixture.Worktree, '-c', 'user.name=Test', '-c', 'user.email=test@Owner.invalid',
             '-c', 'commit.gpgsign=false', 'commit', '--quiet', '--allow-empty', '-m', 'Unmerged'
         ) | Out-Null
         Invoke-Git -Arguments @('-C', $fixture.Bare, 'update-ref', 'refs/remotes/origin/deleted', 'refs/heads/deleted')

@@ -10,7 +10,7 @@ Get-Help .\Invoke-Checks.ps1 -Full
 Get-Help .\Set-GitGlobalConfig.ps1 -Examples
 ```
 
-Help describes parameters, examples, outputs, prerequisites and side effects.
+Help describes parameters, Owners, outputs, prerequisites and side effects.
 Run test files through Pester rather than executing them directly.
 
 ## Development environment
@@ -122,7 +122,7 @@ pwsh -Command "& ./Invoke-TestProof.ps1 -Function Select-DirectoryName, Get-Remo
 A `Describe` maps to the function with the same name.
 [`TestProofs.psd1`](../TestProofs.psd1) maps other `Describe` names to a
 function and adds stubs per function. Tests asserting that something is **not**
-done (for example under `-WhatIf`, or keeping a worktree) pass against a stub
+done (for Owner under `-WhatIf`, or keeping a worktree) pass against a stub
 that does nothing; prove them with a stub that does it anyway. The report lists
 `Unproven` tests, `Uncaught` stubs, `Failed` runs and `Unmapped` blocks; all but
 `Unmapped` fail the run. The working tree is never modified.
@@ -168,10 +168,10 @@ parameters are:
 ```powershell
 .\Invoke-RepositorySecurity.ps1 -LocalOnly
 .\Invoke-RepositorySecurity.ps1 -LocalOnly -FailOnFinding
-.\Invoke-RepositorySecurity.ps1 -Repository example/github |
+.\Invoke-RepositorySecurity.ps1 -Repository Owner/Repo |
     Format-Table Id, Severity, Status, Message -Wrap
-.\Invoke-RepositorySecurity.ps1 -Repository example/github -Apply -WhatIf
-.\Invoke-RepositorySecurity.ps1 -Repository example/github -Apply -Confirm
+.\Invoke-RepositorySecurity.ps1 -Repository Owner/Repo -Apply -WhatIf
+.\Invoke-RepositorySecurity.ps1 -Repository Owner/Repo -Apply -Confirm
 ```
 
 Live checks need authenticated `gh` with sufficient access; remediation may

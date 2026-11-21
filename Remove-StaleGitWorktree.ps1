@@ -17,20 +17,20 @@
     listings skip cleanup; remote errors stop it.
 .PARAMETER GitHubOwner
     Owner whose local repositories are inspected, given as a name or a
-    github.com owner URL such as https://github.com/example. Defaults to example.
+    github.com owner URL such as https://github.com/Owner. Defaults to Owner.
     Cannot be combined with Url.
 .PARAMETER Url
     github.com location selecting what to inspect. An owner URL behaves like
-    GitHubOwner. A repository URL such as https://github.com/example/github, or a
-    branch URL such as https://github.com/example/github/tree/feature/login,
+    GitHubOwner. A repository URL such as https://github.com/Owner/Repo, or a
+    branch URL such as https://github.com/Owner/Repo/tree/feature/login,
     inspects only that repository. HTTPS, SSH and scheme-less forms, a trailing
     slash and a .git suffix are accepted.
 .PARAMETER BranchOnly
     With a branch URL, considers only the worktree of that branch. Requires a
     branch URL.
 .PARAMETER TargetDirectory
-    Root directory containing one folder per owner. Defaults to C:\Repositories, so
-    example/github is inspected in C:\Repositories\example\github. Owner and repository
+    Root directory containing one folder per owner. Defaults to C:\GIT, so
+    Owner/Repo is inspected in C:\GIT\Owner\github. Owner and repository
     folders are matched case-insensitively when no exact match exists. The owner
     and repository folders must not be symbolic links or junctions.
 .PARAMETER Apply
@@ -44,15 +44,15 @@
     Missing proof or Git refusal preserves the branch and reports a warning.
 .EXAMPLE
     .\Remove-StaleGitWorktree.ps1
-    Previews eligible worktrees across example's repositories in C:\Repositories\example.
+    Previews eligible worktrees across Owner's repositories in C:\GIT\Owner.
 .EXAMPLE
-    .\Remove-StaleGitWorktree.ps1 -Url https://github.com/example/github -Apply -WhatIf
-    Exercises removal planning for example/github without removing worktrees.
+    .\Remove-StaleGitWorktree.ps1 -Url https://github.com/Owner/Repo -Apply -WhatIf
+    Exercises removal planning for Owner/Repo without removing worktrees.
 .EXAMPLE
-    .\Remove-StaleGitWorktree.ps1 -Url https://github.com/example/github/tree/feature/login -BranchOnly -Apply
+    .\Remove-StaleGitWorktree.ps1 -Url https://github.com/Owner/Repo/tree/feature/login -BranchOnly -Apply
     Removes the feature/login worktree if its origin branch was deleted.
 .EXAMPLE
-    .\Remove-StaleGitWorktree.ps1 -GitHubOwner example -TargetDirectory C:\Repositories -Apply -DeleteMergedBranch -Confirm
+    .\Remove-StaleGitWorktree.ps1 -GitHubOwner Owner -TargetDirectory C:\GIT -Apply -DeleteMergedBranch -Confirm
     Confirms eligible worktree removals and separately confirms branch deletions.
 .INPUTS
     None. This script does not accept pipeline input.
@@ -73,7 +73,7 @@
 [CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'Owner')]
 param (
     [Parameter(ParameterSetName = 'Owner')]
-    [string] $GitHubOwner = 'example',
+    [string] $GitHubOwner = 'Owner',
 
     [Parameter(Mandatory, ParameterSetName = 'Url')]
     [string] $Url,
@@ -81,7 +81,7 @@ param (
     [Parameter(ParameterSetName = 'Url')]
     [switch] $BranchOnly,
 
-    [string] $TargetDirectory = 'C:\Repositories',
+    [string] $TargetDirectory = 'C:\GIT',
 
     [switch] $Apply,
 

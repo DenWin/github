@@ -22,7 +22,7 @@ changing anything. Worktree cleanup previews by default and requires `-Apply`.
 Contributor setup, checks, test suites and maintenance helpers are documented in
 the [development guide](docs/Development.md).
 
-Each script includes command-line help with parameters, examples and safety notes:
+Each script includes command-line help with parameters, Owners and safety notes:
 
 ```powershell
 Get-Help .\Set-GitGlobalConfig.ps1 -Full
@@ -67,23 +67,23 @@ Other platforms keep their existing credential-helper configuration.
 # Preview
 ./Sync-GitRepositories.ps1 -DryRun
 
-# Sync every non-fork repository of an owner into C:\Repositories\example\<repo>
-./Sync-GitRepositories.ps1 -GitHubOwner example -TargetDirectory C:\Repositories
-./Sync-GitRepositories.ps1 -Url https://github.com/example -TargetDirectory C:\Repositories
+# Sync every non-fork repository of an owner into C:\GIT\Owner\<Repo>
+./Sync-GitRepositories.ps1 -GitHubOwner Owner -TargetDirectory C:\GIT
+./Sync-GitRepositories.ps1 -Url https://github.com/Owner -TargetDirectory C:\GIT
 
 # Sync one repository: bare clone and a worktree for every branch
-./Sync-GitRepositories.ps1 -Url https://github.com/example/github
+./Sync-GitRepositories.ps1 -Url https://github.com/Owner/Repo
 
 # Sync one repository, but create or check only one branch's worktree
-./Sync-GitRepositories.ps1 -Url https://github.com/example/github/tree/feature/login -BranchOnly
+./Sync-GitRepositories.ps1 -Url https://github.com/Owner/Repo/tree/feature/login -BranchOnly
 ```
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `-GitHubOwner` | `example` | Account whose non-fork repositories are synced; a name or an owner URL. |
+| `-GitHubOwner` | `Owner` | Account whose non-fork repositories are synced; a name or an owner URL. |
 | `-Url` | none | Owner, repository or branch URL; replaces `-GitHubOwner`. See below. |
 | `-BranchOnly` | off | With a branch URL, create or check only that branch's worktree. |
-| `-TargetDirectory` | `C:\Repositories` | Root directory; each owner gets its own subfolder. |
+| `-TargetDirectory` | `C:\GIT` | Root directory; each owner gets its own subfolder. |
 | `-DryRun` | off | Report actions without cloning, fetching or creating worktrees. |
 
 `-Url` accepts HTTPS, SSH (`git@github.com:owner/repo.git`) and scheme-less
@@ -91,9 +91,9 @@ Other platforms keep their existing credential-helper configuration.
 
 | URL | Selects |
 | --- | --- |
-| `https://github.com/example` | Every non-fork repository of the owner, like `-GitHubOwner`. |
-| `https://github.com/example/github` | Only that repository, with all its branches. |
-| `https://github.com/example/github/tree/feature/login` | Only that repository with all its branches; with `-BranchOnly`, only that branch's worktree. |
+| `https://github.com/Owner` | Every non-fork repository of the owner, like `-GitHubOwner`. |
+| `https://github.com/Owner/Repo` | Only that repository, with all its branches. |
+| `https://github.com/Owner/Repo/tree/feature/login` | Only that repository with all its branches; with `-BranchOnly`, only that branch's worktree. |
 
 The bare repository is always cloned or fetched completely, also with `-BranchOnly`.
 An explicitly selected repository is synced even if it is a fork.
@@ -107,9 +107,9 @@ Resulting layout:
 ```
 
 > **Changed:** `-TargetDirectory` is now the parent of the owner folder. The
-> default `C:\Repositories` gives the same `C:\Repositories\example\<repo>` paths as before, but an
-> explicit `-TargetDirectory C:\Repositories\example` now syncs into `C:\Repositories\example\example`.
-> Pass `C:\Repositories` instead. `Remove-StaleGitWorktree.ps1` no longer accepts a single
+> default `C:\GIT` gives the same `C:\GIT\Owner\<Repo>` paths as before, but an
+> explicit `-TargetDirectory C:\GIT\Owner` now syncs into `C:\GIT\Owner\Owner`.
+> Pass `C:\GIT` instead. `Remove-StaleGitWorktree.ps1` no longer accepts a single
 > repository folder as `-TargetDirectory`; select it with `-Url`.
 
 Behavior:
@@ -128,17 +128,17 @@ Behavior:
 ### Remove-StaleGitWorktree.ps1
 
 ```powershell
-# Preview every repository of the owner in C:\Repositories\example (defaults: example, C:\Repositories)
-.\Remove-StaleGitWorktree.ps1 -GitHubOwner example -TargetDirectory C:\Repositories
+# Preview every repository of the owner in C:\GIT\Owner (defaults: Owner, C:\GIT)
+.\Remove-StaleGitWorktree.ps1 -GitHubOwner Owner -TargetDirectory C:\GIT
 
 # Apply cleanup, or limit it to one repository or one branch selected by URL
 .\Remove-StaleGitWorktree.ps1 -Apply
-.\Remove-StaleGitWorktree.ps1 -Url https://github.com/example/github -Apply -WhatIf
-.\Remove-StaleGitWorktree.ps1 -Url https://github.com/example/github/tree/feature/login -BranchOnly -Apply
+.\Remove-StaleGitWorktree.ps1 -Url https://github.com/Owner/Repo -Apply -WhatIf
+.\Remove-StaleGitWorktree.ps1 -Url https://github.com/Owner/Repo/tree/feature/login -BranchOnly -Apply
 
 # Optionally preview, then delete eligible merged local branches as well
-.\Remove-StaleGitWorktree.ps1 -Url https://github.com/example/github -DeleteMergedBranch
-.\Remove-StaleGitWorktree.ps1 -Url https://github.com/example/github -DeleteMergedBranch -Apply
+.\Remove-StaleGitWorktree.ps1 -Url https://github.com/Owner/Repo -DeleteMergedBranch
+.\Remove-StaleGitWorktree.ps1 -Url https://github.com/Owner/Repo -DeleteMergedBranch -Apply
 ```
 
 `-GitHubOwner`, `-Url`, `-BranchOnly` and `-TargetDirectory` select repositories

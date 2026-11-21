@@ -40,16 +40,16 @@ jobs:
 
 Describe 'Resolve-SecurityTarget' {
     It 'returns owner/name for <Repository>' -ForEach @(
-        @{ Repository = 'example/github' }
-        @{ Repository = 'https://github.com/example/github' }
-        @{ Repository = 'https://github.com/example/github/' }
-        @{ Repository = 'https://github.com/example/github/tree/feature/git-workflow-tooling' }
+        @{ Repository = 'Owner/Repo' }
+        @{ Repository = 'https://github.com/Owner/Repo' }
+        @{ Repository = 'https://github.com/Owner/Repo/' }
+        @{ Repository = 'https://github.com/Owner/Repo/tree/feature/git-workflow-tooling' }
     ) {
-        Resolve-SecurityTarget -Repository $Repository | Should -BeExactly 'example/github'
+        Resolve-SecurityTarget -Repository $Repository | Should -BeExactly 'Owner/Repo'
     }
 
     It 'rejects an owner-only URL instead of guessing a repository' {
-        { Resolve-SecurityTarget -Repository 'https://github.com/example' } |
+        { Resolve-SecurityTarget -Repository 'https://github.com/Owner' } |
             Should -Throw '*names only an owner*'
     }
 }
@@ -397,7 +397,7 @@ Describe 'Invoke-RepositorySecurity' {
     }
 
     It 'rejects an owner-only target before any audit' {
-        { Invoke-RepositorySecurity -Path $localRepository -Repository 'https://github.com/example' } |
+        { Invoke-RepositorySecurity -Path $localRepository -Repository 'https://github.com/Owner' } |
             Should -Throw '*names only an owner*'
     }
 
