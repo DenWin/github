@@ -7,7 +7,7 @@ Every PowerShell script has comment-based help. From the repository root, use:
 
 ```powershell
 Get-Help .\Invoke-Checks.ps1 -Full
-Get-Help .\Set-GitGlobalConfig.ps1 -Examples
+Get-Help .\Set-GitConfig.ps1 -Examples
 ```
 
 Help describes parameters, Owners, outputs, prerequisites and side effects.
@@ -132,7 +132,7 @@ that does nothing; prove them with a stub that does it anyway. The report lists
 | Script | Scope and isolation |
 | --- | --- |
 | [`GitTooling.Common.Tests.ps1`](../GitTooling.Common.Tests.ps1) | Owner and URL parsing, target resolution, worktree-list parsing and the Git wrapper against real Git. |
-| [`Set-GitGlobalConfig.Tests.ps1`](../Set-GitGlobalConfig.Tests.ps1) | Identity, plan and command steps; applies the plan to temporary `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` files, never your configuration. |
+| [`Set-GitConfig.Tests.ps1`](../Set-GitConfig.Tests.ps1) | Identity, plan and command steps; applies global and local plans to temporary Git configuration and repositories. |
 | [`Sync-GitRepositories.Tests.ps1`](../Sync-GitRepositories.Tests.ps1) | Branch selection, layout and plan steps; real local bare clones, worktrees and upstreams tagged `Integration`. |
 | [`Remove-StaleGitWorktree.Tests.ps1`](../Remove-StaleGitWorktree.Tests.ps1) | Eligibility steps; real local Git fixtures tagged `Integration` for safe removal, branch preservation/deletion, URL selection and failure paths. |
 | [`Install-DevelopmentDependencies.Tests.ps1`](../Install-DevelopmentDependencies.Tests.ps1) | Pin checks and installation from local ZIP fixtures, including tampering and overwrite refusal. |
@@ -153,25 +153,25 @@ themselves are verified manually with `-DryRun` or `-WhatIf`.
 ## Repository security helper
 
 [`Invoke-RepositorySecurity.ps1`](../Invoke-RepositorySecurity.ps1) audits local
-workflow files and, optionally, explicit GitHub.com repository settings. Its
+workflow files and installs opt-in hooks. [`Protect-GitHubRepository.ps1`](../Protect-GitHubRepository.ps1)
+audits and hardens explicit GitHub.com repository settings. Its
 parameters are:
 
 | Parameter | Meaning |
 | --- | --- |
 | `-Path` | Local repository root; defaults to the script directory. |
-| `-Repository` | Explicit GitHub target as `owner/name` or a repository or branch URL (the branch is ignored); required unless `-LocalOnly` is used. Never inferred from local remotes. |
 | `-LocalOnly` | No GitHub API calls or authentication required. |
-| `-Apply` | Apply supported GitHub remediations; never rewrites workflow YAML. Supports `-WhatIf` and `-Confirm`. |
+| `-Apply` | Apply supported local hook changes; never rewrites workflow YAML. Supports `-WhatIf` and `-Confirm`. |
 | `-InstallHooks` | Opt into local hooks; requires `-Apply`. |
 | `-FailOnFinding` | Fail on unresolved `Fail` or `Unknown` findings. |
 
 ```powershell
 .\Invoke-RepositorySecurity.ps1 -LocalOnly
 .\Invoke-RepositorySecurity.ps1 -LocalOnly -FailOnFinding
-.\Invoke-RepositorySecurity.ps1 -Repository Owner/Repo |
+.\Protect-GitHubRepository.ps1 -Repository Owner/Repo |
     Format-Table Id, Severity, Status, Message -Wrap
-.\Invoke-RepositorySecurity.ps1 -Repository Owner/Repo -Apply -WhatIf
-.\Invoke-RepositorySecurity.ps1 -Repository Owner/Repo -Apply -Confirm
+.\Protect-GitHubRepository.ps1 -Repository Owner/Repo -Apply -WhatIf
+.\Protect-GitHubRepository.ps1 -Repository Owner/Repo -Apply -Confirm
 ```
 
 Live checks need authenticated `gh` with sufficient access; remediation may
@@ -204,12 +204,61 @@ Dependabot security updates use the dedicated `automated-security-fixes`
 endpoint. Disabled or paused updates produce a remediable finding; inaccessible
 or incomplete responses remain `Unknown`.
 
-Branch protection is deliberately a manual-review finding, even when a ruleset
-exists. In GitHub Settings > Rules > Rulesets, protect the default branch with
-required PRs, required CI checks, force-push/deletion prevention and reviewed
-bypass permissions. Review requirements should suit the maintainer count:
-requiring another person's approval can block a solo maintainer. CODEOWNERS alone
-does not enforce reviews.
+The protection helper can set classic branch protection on the default branch:
+one approving review, stale-review dismissal, last-push approval, linear history,
+administrator enforcement, and prevention of force pushes and branch deletion.
+Required status checks are not guessed; configure CI-specific required checks
+through a ruleset or classic protection after the check names are stable.
+
+Remaining manual GitHub review steps:
+
+1. Open **Settings > Rules > Rulesets** (or classic **Branches** protection).
+2. Apply the ruleset to the default branch and every other release branch.
+3. Require pull requests, a stable set of required CI checks, signed commits
+   if the organization requires them, conversation resolution, and linear history.
+4. Prevent force pushes and deletions; limit the bypass list to administrators
+   or a tightly controlled team and do not allow deploy keys or apps to bypass
+   branch rules.
+5. Open **Settings > Actions > General** and review allowed actions, forks,
+   workflow approvals, artifact retention, cache retention and runner access.
+6. Open **Settings > Code security** and enable code scanning, dependency review,
+   Dependabot alerts/security updates and secret scanning where supported.
+7. Open **Settings > Collaborators and teams**, remove unnecessary write/admin
+   access, and review deploy keys, GitHub Apps and outside collaborators.
+8. Review repository visibility, forks, merge methods, auto-merge, release/tag
+   protection, environments, Pages publishing, Actions secrets, variables and
+   environment protection rules.
+
+Organization-wide controls such as SAML, enforced 2FA, IP allow lists, organization
+rulesets and audit-log retention must be reviewed in the organization settings;
+repository tooling cannot safely infer or change organization policy.
+
+GitHub Enterprise Server must use the same repository API through an authenticated
+`gh` host rather than the public `github.com` API. Before relying on automation,
+configure `gh auth login --hostname <host>` and verify the Enterprise Server API
+supports every endpoint used above.
+
+For GitLab.com or self-hosted GitLab, no repository-hardening script currently
+exits in this repository. Manually configure:
+
+1. Open **Settings > Repository > Protected branches** and protect the default
+   branch and release branches.
+2. Allow merge only through merge requests, disallow force pushes and deletion,
+   require code-owner approval where used, and set the minimum approval count.
+3. Open **Settings > Merge requests** and enable pipelines-before-merge,
+   all discussions resolved, removal of source branches, merge trains if needed,
+   and restrictions that prevent authors/committers from approving their own work.
+4. Open **Settings > CI/CD** and restrict protected variables, runners and
+   environments to protected refs and responsible teams.
+5. Open **Settings > General > Visibility, project features, permissions** and
+   review forks, public visibility, deployments, releases and package registries.
+6. Open **Security & Compliance** and enable secret detection, dependency scanning,
+   SAST, container scanning and vulnerability reporting where licensed and supported.
+
+For bare Git, Gitea, Bitbucket Server or another generic Git host, central branch
+rules are host-specific. Use server-side pre-receive/update hooks or the host API
+to reject force pushes and pushes outside merge-request workflows; these controls
+cannot be enforced by a local `.git/config` setting alone.
 
 ### Opt-in Git hooks
 

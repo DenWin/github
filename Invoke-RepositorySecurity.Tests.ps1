@@ -7,6 +7,7 @@
 
 BeforeAll {
     . "$PSScriptRoot\Invoke-RepositorySecurity.ps1"
+    . "$PSScriptRoot\Protect-GitHubRepository.ps1"
     $dependencies = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'DevelopmentDependencies.psd1')
     Import-Module powershell-yaml -RequiredVersion $dependencies['powershell-yaml'] -ErrorAction Stop
 
@@ -342,15 +343,28 @@ Describe 'Get-BranchProtectionFinding' {
         $script:metadata = New-ApiResponse @{ default_branch = 'main' }
     }
 
-    It 'is always Unknown and asks for manual review' {
+    It 'fails when protection is absent and returns a branch-protection fix' {
         $finding = Get-BranchProtectionFinding -Repository 'o/r' -Metadata $metadata -Legacy (New-ApiResponse @{}) -Rules (New-ApiResponse @(@{ type = 'x' }))
-        $finding.Status | Should -BeExactly 'Unknown'
-        $finding.Message | Should -BeLike 'Manually verify*'
+        $finding.Status | Should -BeExactly 'Fail'
+        $finding.Message | Should -BeLike "Protect 'main'*"
+        $finding.Fix.Method | Should -BeExactly 'PUT'
+        $finding.Fix.Body.allow_force_pushes | Should -BeFalse
+        $finding.Fix.Body.allow_deletions | Should -BeFalse
     }
 
     It 'says when neither classic protection nor rulesets are found' {
         $finding = Get-BranchProtectionFinding -Repository 'o/r' -Metadata $metadata -Legacy (New-ApiResponse $null 'HTTP 404') -Rules (New-ApiResponse @())
         $finding.Message | Should -BeLike 'No active ruleset rules found*'
+    }
+
+    It 'passes a classic protection with reviews and push/deletion blocked' {
+        $protected = New-ApiResponse @{
+            required_pull_request_reviews = @{ required_approving_review_count = 1 }
+            allow_force_pushes = $false
+            allow_deletions = $false
+        }
+        Get-BranchProtectionFinding -Repository 'o/r' -Metadata $metadata -Legacy $protected -Rules (New-ApiResponse @()) |
+            Should -BeNullOrEmpty
     }
 
     It 'reports <Expected> when metadata is <Name>' -ForEach @(
@@ -389,7 +403,7 @@ Describe 'Invoke-RepositorySecurity' {
     }
 
     It 'never guesses the GitHub target' {
-        { Invoke-RepositorySecurity -Path $localRepository } | Should -Throw '*never guessed*'
+        { Invoke-RepositorySecurity -Path $localRepository } | Should -Throw '*LocalOnly*'
     }
 
     It 'requires -Apply before hook installation' {
@@ -398,7 +412,7 @@ Describe 'Invoke-RepositorySecurity' {
 
     It 'rejects an owner-only target before any audit' {
         { Invoke-RepositorySecurity -Path $localRepository -Repository 'https://github.com/Owner' } |
-            Should -Throw '*names only an owner*'
+            Should -Throw '*Protect-GitHubRepository.ps1*'
     }
 
     It 'audits local workflows offline with -LocalOnly' {

@@ -2,32 +2,21 @@
 
 <#
 .SYNOPSIS
-    Audits workflow files and GitHub settings; changes settings only with -Apply.
+    Audits local workflow files and can install opt-in Git hooks.
 .DESCRIPTION
-    Parses local workflow YAML and optionally audits an explicit GitHub.com
-    repository through gh. Requires powershell-yaml at the version pinned in
-    DevelopmentDependencies.psd1. Live checks additionally require authenticated
-    gh with access to the target; remediation may require administration access.
-    Local workflow findings require manual fixes. Automatic remediation is
-    restricted to supported GitHub settings and optional local Git hooks.
+    Parses local workflow YAML and can install opt-in Git hooks. Requires
+    powershell-yaml at the version pinned in DevelopmentDependencies.psd1.
+    GitHub repository settings are handled by Protect-GitHubRepository.ps1.
 .PARAMETER Path
     Local repository root whose .github/workflows files are audited and where
     hooks can be installed. Defaults to this script's directory. It does not
     determine the GitHub target.
-.PARAMETER Repository
-    Explicit GitHub.com target as owner/name or as a repository or branch URL,
-    such as https://github.com/Owner/Repo or
-    https://github.com/Owner/Repo/tree/main; a branch in the URL is ignored.
-    An owner-only URL is rejected. Required unless LocalOnly is supplied. The
-    target is never inferred from local Git configuration.
 .PARAMETER LocalOnly
     Audits local workflows only, without GitHub API calls or authentication.
     Can be combined with Apply and InstallHooks to configure local hooks.
 .PARAMETER Apply
-    Applies supported GitHub remediations for findings. Does not rewrite YAML.
-    Supports common WhatIf and Confirm parameters. Action-source remediation
-    replaces third-party allowlist exceptions with GitHub-owned actions plus
-    ossf/scorecard-action@*, while preserving disabled or local-only policies.
+    Applies supported local hook changes. Does not rewrite YAML.
+    Supports common WhatIf and Confirm parameters.
 .PARAMETER InstallHooks
     Opts in to the local .githooks pre-commit and pre-push hooks. Requires Apply.
     Refuses to overwrite a different local core.hooksPath. Hook files must
@@ -35,12 +24,6 @@
 .PARAMETER FailOnFinding
     Throws after emitting findings if any have status Fail or Unknown, including
     manual-review checks. An Applied status is not a verified clean audit.
-.EXAMPLE
-    .\Invoke-RepositorySecurity.ps1 -Repository Owner/Repo
-    Audits local workflows and the explicit GitHub target without changing them.
-.EXAMPLE
-    .\Invoke-RepositorySecurity.ps1 -Repository https://github.com/Owner/Repo -Apply -WhatIf
-    Previews supported GitHub setting changes.
 .EXAMPLE
     .\Invoke-RepositorySecurity.ps1 -LocalOnly -Apply -InstallHooks
     Audits local workflows and installs the opt-in Git hooks.
@@ -628,28 +611,14 @@ function Invoke-RepositorySecurity {
     )
 
     if ($InstallHooks -and -not $Apply) { throw '-InstallHooks requires -Apply (use -WhatIf to preview).' }
-    if (-not $LocalOnly -and [string]::IsNullOrWhiteSpace($Repository)) {
-        throw 'Specify -Repository owner/name or -LocalOnly; the GitHub target is never guessed.'
+    if (-not $LocalOnly) {
+        if (-not [string]::IsNullOrWhiteSpace($Repository)) {
+            throw '-Repository is handled by Protect-GitHubRepository.ps1; use -LocalOnly for local auditing.'
+        }
+        throw 'Specify -LocalOnly for local auditing; GitHub hardening is handled by Protect-GitHubRepository.ps1.'
     }
-    $target = if ([string]::IsNullOrWhiteSpace($Repository)) { $null } else { Resolve-SecurityTarget -Repository $Repository }
 
     $findings = @(Get-WorkflowSecurityFinding -Path $Path)
-    if (-not $LocalOnly) {
-        $findings += @(Get-GitHubSecurityFinding -Repository $target)
-    }
-    foreach ($finding in $findings) {
-        $requests = @(if ($null -ne $target) { Get-RemediationRequest -Finding $finding -Repository $target })
-        if ($Apply -and $requests.Count -and $PSCmdlet.ShouldProcess($target, $finding.Message)) {
-            foreach ($request in $requests) {
-                $response = Invoke-SecurityApi @request
-                if (-not $response.Success) {
-                    throw "Remediation failed for $($finding.Id) ($($request.Method) $($request.Endpoint)): $($response.Error)"
-                }
-            }
-            $finding.Status = 'Applied'
-            $finding.Message += ' Change accepted; rerun the audit to verify.'
-        }
-    }
     if ($InstallHooks -and $PSCmdlet.ShouldProcess($Path, 'Set local core.hooksPath to .githooks')) {
         $hookFiles = @(
             Join-Path (Join-Path $Path '.githooks') 'pre-commit'
