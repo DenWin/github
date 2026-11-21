@@ -467,7 +467,7 @@ function Test-NestedSettingDisabled {
 }
 
 
-function Get-PreservedRequiredStatusChecks {
+function Get-PreservedRequiredStatusCheck {
     param ($Legacy)
 
     if ($null -eq $Legacy -or -not $Legacy.Success) {
@@ -521,7 +521,7 @@ function Get-BranchProtectionFinding {
     }
     $branch = Get-DefaultBranchName -Response $Metadata
     $base = "repos/$Repository"
-    $preservedStatusChecks = Get-PreservedRequiredStatusChecks -Legacy $Legacy
+    $preservedStatusChecks = Get-PreservedRequiredStatusCheck -Legacy $Legacy
     $fix = @{
         Endpoint = "$base/branches/$([uri]::EscapeDataString($branch))/protection"
         Method = 'PUT'
@@ -652,7 +652,8 @@ function Get-GitHubSecurityFinding {
     $actionPolicy = Get-ActionPolicyData -Response $actionResponse
     $visibility = if ($metadata.Success -and $metadata.Data -is [System.Collections.IDictionary]) {
         [string] $metadata.Data['visibility']
-    } else {
+    }
+    else {
         $null
     }
 
