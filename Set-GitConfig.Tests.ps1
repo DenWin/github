@@ -2,58 +2,34 @@
 
 <#
 .SYNOPSIS
-    Tests Git identity resolution and the global configuration plan.
+    Tests Git identity selection and the global/local configuration plan.
 .DESCRIPTION
     Pure steps (profile parsing, name selection, plan and command building) are
     tested with plain data. Applying the plan runs real Git against a temporary
     GIT_CONFIG_GLOBAL file. Nothing is mocked.
 .EXAMPLE
-    Invoke-Pester -Path .\Set-GitGlobalConfig.Tests.ps1
-    Runs only the global Git configuration tests.
+    Invoke-Pester -Path     Invoke-Pester -Path .\Set-GitConfig.Tests.ps1
+    Runs only the Git configuration tests.
 .INPUTS
     None. Run this file through Pester rather than invoking it directly.
 .OUTPUTS
     None. Pester reports results; use Invoke-Pester -PassThru for result objects.
 .NOTES
-    Requires PowerShell 7, Pester and Git. Real global Git configuration is never
-    written. Assert-Precondition, Get-GitHubIdentity and Invoke-Main depend on an
-    installed and authenticated gh and are not tested here.
+    Requires PowerShell 7, Pester and Git. Real global and local configuration
+    is isolated with GIT_CONFIG_GLOBAL and temporary repositories.
 #>
 BeforeAll {
-    . "$PSScriptRoot\Set-GitGlobalConfig.ps1"
+    . "$PSScriptRoot\Set-GitConfig.ps1"
     . "$PSScriptRoot\GitTooling.TestHelpers.ps1"
-}
-
-Describe 'ConvertFrom-GitHubUser' {
-    It 'returns the trimmed profile name and the noreply email' {
-        $identity = ConvertFrom-GitHubUser -Json '{"id":1,"login":"Owner","name":" Owner Name "}'
-        $identity.Name | Should -BeExactly 'Owner Name'
-        $identity.Email | Should -BeExactly '1+Owner@users.noreply.github.com'
-    }
-
-    It 'falls back to the login for the name <Name>' -ForEach @(
-        @{ Name = 'null'; Json = '{"id":1,"login":"Owner","name":null}' }
-        @{ Name = 'empty'; Json = '{"id":1,"login":"Owner","name":""}' }
-        @{ Name = 'missing'; Json = '{"id":1,"login":"Owner"}' }
-    ) {
-        (ConvertFrom-GitHubUser -Json $Json).Name | Should -BeExactly 'Owner'
-    }
-
-    It 'throws when <Name> is missing' -ForEach @(
-        @{ Name = 'id'; Json = '{"login":"Owner"}' }
-        @{ Name = 'login'; Json = '{"id":1,"login":" "}' }
-    ) {
-        { ConvertFrom-GitHubUser -Json $Json } | Should -Throw '*noreply*'
-    }
 }
 
 Describe 'Select-GitUserName' {
     It 'returns <Expected> for user name <UserName>' -ForEach @(
         @{ UserName = 'Jane'; Expected = 'Jane' }
-        @{ UserName = ''; Expected = 'Profile Name' }
-        @{ UserName = ' '; Expected = 'Profile Name' }
+        @{ UserName = ''; Expected = $null }
+        @{ UserName = ' '; Expected = $null }
     ) {
-        Select-GitUserName -UserName $UserName -IdentityName 'Profile Name' | Should -BeExactly $Expected
+        Select-GitUserName -UserName $UserName | Should -BeExactly $Expected
     }
 }
 
@@ -93,6 +69,11 @@ Describe 'Get-GitConfigPlan' {
         ($windowsPlan | Where-Object Key -EQ 'core.longpaths').Value | Should -BeExactly 'true'
         @($plan | Where-Object Key -In @('credential.helper', 'core.longpaths')).Count | Should -Be 0
     }
+
+    It 'does not add Windows global credential settings to local configuration' {
+        $localPlan = Get-GitConfigPlan -UserName 'Jane' -Email 'j@x.com' -Windows $true -Scope Local
+        @($localPlan | Where-Object Key -In @('credential.helper', 'core.longpaths')).Count | Should -Be 0
+    }
 }
 
 Describe 'Get-GitConfigCommand' {
@@ -109,6 +90,11 @@ Describe 'Get-GitConfigCommand' {
         $command[0].Arguments | Should -BeExactly @('config', '--global', '--replace-all', 'credential.helper', '')
         $command[0].FailureMessage | Should -BeLike '*reset*'
         $command[1].Arguments | Should -BeExactly @('config', '--global', '--add', 'credential.helper', 'manager')
+    }
+
+    It 'writes local settings against a repository path' {
+        $command = @(Get-GitConfigCommand -Plan @([pscustomobject]@{ Key = 'pull.rebase'; Value = 'true' }) -Scope Local -Path '/repo')
+        $command[0].Arguments | Should -BeExactly @('-C', '/repo', 'config', '--local', 'pull.rebase', 'true')
     }
 }
 

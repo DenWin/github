@@ -7,6 +7,7 @@
 
 BeforeAll {
     . "$PSScriptRoot\Invoke-RepositorySecurity.ps1"
+    . "$PSScriptRoot\Protect-GitHubRepository.ps1"
     $dependencies = Import-PowerShellDataFile (Join-Path $PSScriptRoot 'DevelopmentDependencies.psd1')
     Import-Module powershell-yaml -RequiredVersion $dependencies['powershell-yaml'] -ErrorAction Stop
 
@@ -236,6 +237,9 @@ Describe 'Get-GitHubSecurityCheck' {
         @{ Id = 'github.workflow-token'; Name = 'read-only without approval'; Expected = $true; Data = @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $false } }
         @{ Id = 'github.workflow-token'; Name = 'read-only with approval'; Expected = $false; Data = @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $true } }
         @{ Id = 'github.workflow-token'; Name = 'write token'; Expected = $false; Data = @{ default_workflow_permissions = 'write'; can_approve_pull_request_reviews = $false } }
+        @{ Id = 'github.fork-pr-workflows'; Name = 'approval only for new GitHub users'; Expected = $true; Data = @{ approval_policy = 'first_time_contributors_new_to_github' } }
+        @{ Id = 'github.fork-pr-workflows'; Name = 'approval for all first-time contributors'; Expected = $false; Data = @{ approval_policy = 'first_time_contributors' } }
+        @{ Id = 'github.fork-pr-workflows'; Name = 'approval for all external contributors'; Expected = $false; Data = @{ approval_policy = 'all_external_contributors' } }
         @{ Id = 'github.action-sources'; Name = 'only the Scorecard exception'; Expected = $true; Data = @{ github_owned_allowed = $true; verified_allowed = $false; patterns_allowed = @('ossf/scorecard-action@*') } }
         @{ Id = 'github.action-sources'; Name = 'an extra pattern'; Expected = $false; Data = @{ github_owned_allowed = $true; verified_allowed = $false; patterns_allowed = @('ossf/scorecard-action@*', 'x/y@*') } }
         @{ Id = 'github.action-sources'; Name = 'verified creators allowed'; Expected = $false; Data = @{ github_owned_allowed = $true; verified_allowed = $true; patterns_allowed = @('ossf/scorecard-action@*') } }
@@ -342,15 +346,63 @@ Describe 'Get-BranchProtectionFinding' {
         $script:metadata = New-ApiResponse @{ default_branch = 'main' }
     }
 
-    It 'is always Unknown and asks for manual review' {
+    It 'fails when protection is absent and returns a branch-protection fix' {
         $finding = Get-BranchProtectionFinding -Repository 'o/r' -Metadata $metadata -Legacy (New-ApiResponse @{}) -Rules (New-ApiResponse @(@{ type = 'x' }))
-        $finding.Status | Should -BeExactly 'Unknown'
-        $finding.Message | Should -BeLike 'Manually verify*'
+        $finding.Status | Should -BeExactly 'Fail'
+        $finding.Message | Should -BeLike "Protect 'main'*"
+        $finding.Fix.Method | Should -BeExactly 'PUT'
+        $finding.Fix.Body.allow_force_pushes | Should -BeFalse
+        $finding.Fix.Body.allow_deletions | Should -BeFalse
     }
 
     It 'says when neither classic protection nor rulesets are found' {
         $finding = Get-BranchProtectionFinding -Repository 'o/r' -Metadata $metadata -Legacy (New-ApiResponse $null 'HTTP 404') -Rules (New-ApiResponse @())
         $finding.Message | Should -BeLike 'No active ruleset rules found*'
+    }
+
+    It 'passes a classic protection with reviews and push/deletion blocked' {
+        $protected = New-ApiResponse @{
+            required_pull_request_reviews = @{ required_approving_review_count = 1 }
+            allow_force_pushes = @{ enabled = $false }
+            allow_deletions = @{ enabled = $false }
+        }
+        Get-BranchProtectionFinding -Repository 'o/r' -Metadata $metadata -Legacy $protected -Rules (New-ApiResponse @()) |
+            Should -BeNullOrEmpty
+    }
+
+    It 'detects force pushes that remain enabled despite reviews' {
+        $protected = New-ApiResponse @{
+            required_pull_request_reviews = @{ required_approving_review_count = 1 }
+            allow_force_pushes = @{ enabled = $true }
+            allow_deletions = @{ enabled = $false }
+        }
+        $finding = Get-BranchProtectionFinding -Repository 'o/r' -Metadata $metadata -Legacy $protected -Rules (New-ApiResponse @())
+        $finding.Status | Should -BeExactly 'Fail'
+    }
+
+    It 'detects missing nested push settings as enabled by default' {
+        $protected = New-ApiResponse @{
+            required_pull_request_reviews = @{ required_approving_review_count = 1 }
+            allow_force_pushes = $null
+            allow_deletions = @{ enabled = $false }
+        }
+        $finding = Get-BranchProtectionFinding -Repository 'o/r' -Metadata $metadata -Legacy $protected -Rules (New-ApiResponse @())
+        $finding.Status | Should -BeExactly 'Fail'
+    }
+
+    It 'preserves existing required status checks during remediation' {
+        $legacy = New-ApiResponse @{
+            required_pull_request_reviews = $null
+            allow_force_pushes = @{ enabled = $false }
+            allow_deletions = @{ enabled = $false }
+            required_status_checks = @{
+                strict = $true
+                contexts = @('checks (ubuntu-latest)', 'checks (windows-latest)')
+            }
+        }
+        $finding = Get-BranchProtectionFinding -Repository 'o/r' -Metadata $metadata -Legacy $legacy -Rules (New-ApiResponse @())
+        $finding.Fix.Body.required_status_checks.strict | Should -BeTrue
+        $finding.Fix.Body.required_status_checks.contexts | Should -Be @('checks (ubuntu-latest)', 'checks (windows-latest)')
     }
 
     It 'reports <Expected> when metadata is <Name>' -ForEach @(
@@ -389,7 +441,7 @@ Describe 'Invoke-RepositorySecurity' {
     }
 
     It 'never guesses the GitHub target' {
-        { Invoke-RepositorySecurity -Path $localRepository } | Should -Throw '*never guessed*'
+        { Invoke-RepositorySecurity -Path $localRepository } | Should -Throw '*LocalOnly*'
     }
 
     It 'requires -Apply before hook installation' {
@@ -398,7 +450,7 @@ Describe 'Invoke-RepositorySecurity' {
 
     It 'rejects an owner-only target before any audit' {
         { Invoke-RepositorySecurity -Path $localRepository -Repository 'https://github.com/Owner' } |
-            Should -Throw '*names only an owner*'
+            Should -Throw '*Protect-GitHubRepository.ps1*'
     }
 
     It 'audits local workflows offline with -LocalOnly' {

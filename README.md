@@ -4,7 +4,8 @@ PowerShell 7 scripts to set up a developer machine (Windows + WSL + VS Code + Gi
 
 | Script | Purpose |
 | --- | --- |
-| `Set-GitGlobalConfig.ps1` | Applies a consistent global Git configuration; identity is derived from your GitHub profile. |
+| `Set-GitConfig.ps1` | Applies a consistent global or local Git configuration. |
+| `Protect-GitHubRepository.ps1` | Audits and hardens GitHub repository settings. |
 | `Sync-GitRepositories.ps1` | Clones all your non-fork GitHub repositories, or one selected by URL, as bare repositories and creates one worktree per remote branch. |
 | `Remove-StaleGitWorktree.ps1` | Previews or removes clean worktrees whose tracked origin branch was deleted, preserving local branches. |
 
@@ -25,32 +26,38 @@ the [development guide](docs/Development.md).
 Each script includes command-line help with parameters, Owners and safety notes:
 
 ```powershell
-Get-Help .\Set-GitGlobalConfig.ps1 -Full
+Get-Help .\Set-GitConfig.ps1 -Full
 Get-Help .\Sync-GitRepositories.ps1 -Examples
 Get-Help .\Remove-StaleGitWorktree.ps1 -Full
 ```
 
 ## Usage
 
-### Set-GitGlobalConfig.ps1
+### Set-GitConfig.ps1
 
 ```powershell
 # Preview
-./Set-GitGlobalConfig.ps1 -DryRun
+./Set-GitConfig.ps1 -DryRun
 
 # Apply
-./Set-GitGlobalConfig.ps1
+./Set-GitConfig.ps1
 
 # Override the user name
-./Set-GitGlobalConfig.ps1 -UserName 'Jane Doe'
+./Set-GitConfig.ps1 -UserName 'Jane Doe' -Email 'jane@example.com'
+
+# Apply to one repository
+./Set-GitConfig.ps1 -Scope Local -Path C:\GIT\Owner\Repo
 ```
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `-UserName` | GitHub profile name, else GitHub login | Value for `user.name`. |
-| `-DryRun` | off | Print the `git config --global` commands without running them. |
+| `-UserName` | none | Value for `user.name`; omitted when not supplied. |
+| `-Email` | none | Value for `user.email`. |
+| `-Scope` | `Global` | Use `Local` for repository settings. |
+| `-Path` | script directory | Repository used with `-Scope Local`. |
+| `-DryRun` | off | Print the `git config` commands without running them. |
 
-`user.email` is always the GitHub noreply address (`<id>+<login>@users.noreply.github.com`).
+Identity values are written only when `-UserName` and `-Email` are supplied.
 
 Settings applied: LF line endings (`core.autocrlf=input`), default branch `main`, pull with rebase and autostash, automatic upstream and annotated tag following on push, prune and write a commit graph on fetch, object verification (`transfer.fsckObjects=true`), local-file protocol restricted to user-initiated operations, `rerere`, `zdiff3` conflict style, `histogram` diff, VS Code as editor, colored UI. On Windows, long paths are enabled. See `Get-GitConfigPlan` for the full list. Following tags may push additional annotated tags.
 
@@ -60,6 +67,26 @@ before applying changes if the manager is unavailable. Repository, worktree,
 URL-specific and command-line configuration can still override or add helpers;
 review those separately. Existing plaintext credential files are not removed.
 Other platforms keep their existing credential-helper configuration.
+
+### Protect-GitHubRepository.ps1
+
+```powershell
+# Audit one repository
+./Protect-GitHubRepository.ps1 -Repository Owner/Repo
+
+# Preview supported repository hardening
+./Protect-GitHubRepository.ps1 -Repository Owner/Repo -Apply -WhatIf
+
+# Apply supported repository hardening
+./Protect-GitHubRepository.ps1 -Repository Owner/Repo -Apply -Confirm
+```
+
+The script protects the default branch with pull-request reviews and prevents
+force pushes and branch deletion. It also audits and remediates supported
+Actions, Dependabot, secret-scanning and merged-branch settings. The fork
+pull-request workflow setting is hardened to the public-repository API's
+least-strictive supported policy. Unsupported or private-repository settings
+remain Unknown rather than passing as verified.
 
 ### Sync-GitRepositories.ps1
 

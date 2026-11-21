@@ -8,7 +8,7 @@
     branch locations, and parsing of Git worktree listings. Parsing functions
     are pure: they take text and return objects without calling Git or GitHub.
     Dot-sourced by Sync-GitRepositories.ps1, Remove-StaleGitWorktree.ps1,
-    Invoke-RepositorySecurity.ps1 and Set-GitGlobalConfig.ps1; it performs no
+    Invoke-RepositorySecurity.ps1, Protect-GitHubRepository.ps1 and Set-GitConfig.ps1; it performs no
     action when loaded.
 .EXAMPLE
     . .\GitTooling.Common.ps1
