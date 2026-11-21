@@ -192,8 +192,9 @@ not parse shell semantics, inspect nested local actions, verify commit trust,
 scan history for secrets or assess downloaded code. Fix local findings manually.
 
 GitHub checks cover action-source restrictions, SHA pin enforcement, workflow
-token privileges and PR approval, Dependabot updates/alerts, secret scanning/push
-protection, private vulnerability reporting and deletion of merged head branches.
+token privileges and PR approval, automatic fork pull-request workflows,
+Dependabot updates/alerts, secret scanning/push protection, private vulnerability
+reporting and deletion of merged head branches.
 `-Apply` can enable those features and restrict actions to GitHub-owned sources
 plus `ossf/scorecard-action@*`, preserving disabled Actions and local-only policies.
 This **replaces other third-party allowlist exceptions**; review the preview
@@ -285,10 +286,11 @@ Hooks can be bypassed and do not replace protected CI. To uninstall, run
 
 ## CI and dependency maintenance
 
-[`ci.yml`](../.github/workflows/ci.yml) runs the full tier on Windows and Linux
-with verified modules. The proof tier runs on Linux for pushes to `main` and on
-demand (**Actions > CI > Run workflow**). Jobs grant only `contents: read`, do
-not persist Git credentials and limit runtime and artifact retention.
+[`ci.yml`](../.github/workflows/ci.yml) runs the small unit/lint tier on Windows
+and Linux for every pull-request commit. [`ci-main.yml`](../.github/workflows/ci-main.yml)
+runs the full tier on Windows and Linux for pushes to `main`, plus the proof tier
+on Linux. Both workflows support manual dispatch. Jobs grant only `contents: read`,
+do not persist Git credentials and limit runtime and artifact retention.
 
 Actions are pinned to 40-character commit SHAs. Dependabot groups weekly action
 updates and waits seven days after release; security updates are not delayed by

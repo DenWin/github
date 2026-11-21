@@ -100,7 +100,7 @@ function Get-GitConfigPlan {
     )
 
     # Ordered list of [key, value, description].
-    $plan = @(
+    @(
         if (-not [string]::IsNullOrWhiteSpace($UserName)) {
             , @('user.name', $UserName, 'Identity')
         }

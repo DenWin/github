@@ -43,7 +43,6 @@
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param (
-    [Parameter(Mandatory)]
     [string] $Repository,
     [switch] $Apply,
     [switch] $FailOnFinding
@@ -277,6 +276,15 @@ function Get-GitHubSecurityCheck {
             }
         }
         @{
+            Id = 'github.fork-pr-workflows'; Endpoint = "$base/actions/permissions/fork-pr-contributor-approval"
+            Required = @('approval_policy')
+            Test = { param ($data) $data['approval_policy'] -eq 'none' }
+            Message = 'Automatically run workflows for pull requests from forks without approval.'
+            Fix = @{ Endpoint = "$base/actions/permissions/fork-pr-contributor-approval"; Method = 'PUT'
+                Body = @{ approval_policy = 'none' }
+            }
+        }
+        @{
             Id = 'github.action-sources'; Endpoint = "$base/actions/permissions/selected-actions"
             Required = @('github_owned_allowed', 'verified_allowed', 'patterns_allowed')
             Test = { param ($data) $data['github_owned_allowed'] -eq $true -and
@@ -495,11 +503,13 @@ function Get-BranchProtectionFinding {
     }
     if ($null -ne $Legacy -and $Legacy.Success) {
         $data = $Legacy.Data
-        $protected = $data -is [System.Collections.IDictionary] -and
+        $protected = (
+            $data -is [System.Collections.IDictionary] -and
             $data.Contains('required_pull_request_reviews') -and
             $null -ne $data['required_pull_request_reviews'] -and
             $data['allow_force_pushes'] -ne $true -and
             $data['allow_deletions'] -ne $true
+        )
         if ($protected) {
             return
         }
