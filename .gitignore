@@ -1,0 +1,40 @@
+# Pester / test output
+TestResults/
+testResults.xml
+coverage.xml
+
+# Local agent and editor state
+.opencode/
+.history/
+.vs/
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+*.code-workspace
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+desktop.ini
+
+# Temporary files and logs
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+~$*
+/.temp/
+/tmp/
+/temp/

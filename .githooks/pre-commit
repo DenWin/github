@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+git diff --cached --check
+exec pwsh -NoLogo -NoProfile -File "$root/Invoke-Checks.ps1" -SkipTests
