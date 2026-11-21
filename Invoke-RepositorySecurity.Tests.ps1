@@ -237,8 +237,8 @@ Describe 'Get-GitHubSecurityCheck' {
         @{ Id = 'github.workflow-token'; Name = 'read-only without approval'; Expected = $true; Data = @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $false } }
         @{ Id = 'github.workflow-token'; Name = 'read-only with approval'; Expected = $false; Data = @{ default_workflow_permissions = 'read'; can_approve_pull_request_reviews = $true } }
         @{ Id = 'github.workflow-token'; Name = 'write token'; Expected = $false; Data = @{ default_workflow_permissions = 'write'; can_approve_pull_request_reviews = $false } }
-        @{ Id = 'github.fork-pr-workflows'; Name = 'automatic fork workflows'; Expected = $true; Data = @{ approval_policy = 'none' } }
-        @{ Id = 'github.fork-pr-workflows'; Name = 'fork workflow approval'; Expected = $false; Data = @{ approval_policy = 'first_time' } }
+        @{ Id = 'github.fork-pr-workflows'; Name = 'automatic first-time fork workflows'; Expected = $true; Data = @{ approval_policy = 'first_time_contributors_new_to_github' } }
+        @{ Id = 'github.fork-pr-workflows'; Name = 'approval for all external contributors'; Expected = $false; Data = @{ approval_policy = 'all_external_contributors' } }
         @{ Id = 'github.action-sources'; Name = 'only the Scorecard exception'; Expected = $true; Data = @{ github_owned_allowed = $true; verified_allowed = $false; patterns_allowed = @('ossf/scorecard-action@*') } }
         @{ Id = 'github.action-sources'; Name = 'an extra pattern'; Expected = $false; Data = @{ github_owned_allowed = $true; verified_allowed = $false; patterns_allowed = @('ossf/scorecard-action@*', 'x/y@*') } }
         @{ Id = 'github.action-sources'; Name = 'verified creators allowed'; Expected = $false; Data = @{ github_owned_allowed = $true; verified_allowed = $true; patterns_allowed = @('ossf/scorecard-action@*') } }
@@ -362,11 +362,46 @@ Describe 'Get-BranchProtectionFinding' {
     It 'passes a classic protection with reviews and push/deletion blocked' {
         $protected = New-ApiResponse @{
             required_pull_request_reviews = @{ required_approving_review_count = 1 }
-            allow_force_pushes = $false
-            allow_deletions = $false
+            allow_force_pushes = @{ enabled = $false }
+            allow_deletions = @{ enabled = $false }
         }
         Get-BranchProtectionFinding -Repository 'o/r' -Metadata $metadata -Legacy $protected -Rules (New-ApiResponse @()) |
             Should -BeNullOrEmpty
+    }
+
+    It 'detects force pushes that remain enabled despite reviews' {
+        $protected = New-ApiResponse @{
+            required_pull_request_reviews = @{ required_approving_review_count = 1 }
+            allow_force_pushes = @{ enabled = $true }
+            allow_deletions = @{ enabled = $false }
+        }
+        $finding = Get-BranchProtectionFinding -Repository 'o/r' -Metadata $metadata -Legacy $protected -Rules (New-ApiResponse @())
+        $finding.Status | Should -BeExactly 'Fail'
+    }
+
+    It 'detects missing nested push settings as enabled by default' {
+        $protected = New-ApiResponse @{
+            required_pull_request_reviews = @{ required_approving_review_count = 1 }
+            allow_force_pushes = $null
+            allow_deletions = @{ enabled = $false }
+        }
+        $finding = Get-BranchProtectionFinding -Repository 'o/r' -Metadata $metadata -Legacy $protected -Rules (New-ApiResponse @())
+        $finding.Status | Should -BeExactly 'Fail'
+    }
+
+    It 'preserves existing required status checks during remediation' {
+        $legacy = New-ApiResponse @{
+            required_pull_request_reviews = $null
+            allow_force_pushes = @{ enabled = $false }
+            allow_deletions = @{ enabled = $false }
+            required_status_checks = @{
+                strict = $true
+                contexts = @('checks (ubuntu-latest)', 'checks (windows-latest)')
+            }
+        }
+        $finding = Get-BranchProtectionFinding -Repository 'o/r' -Metadata $metadata -Legacy $legacy -Rules (New-ApiResponse @())
+        $finding.Fix.Body.required_status_checks.strict | Should -BeTrue
+        $finding.Fix.Body.required_status_checks.contexts | Should -Be @('checks (ubuntu-latest)', 'checks (windows-latest)')
     }
 
     It 'reports <Expected> when metadata is <Name>' -ForEach @(

@@ -1,0 +1,23 @@
+= F004 Requirements
+
+== Functional requirements
+
+[#fr-f004-001]
+=== FR-F004-001: Preview cleanup
+Status: Implemented
+
+Priority: P1
+
+Source: Remove-StaleGitWorktree.ps1
+
+Cleanup shall be preview-only by default and shall require Apply for removal.
+
+[#fr-f004-002]
+=== FR-F004-002: Preserve local changes and commits
+Status: Implemented
+
+Priority: P1
+
+Source: Remove-StaleGitWorktree.ps1
+
+The script shall refuse dirty, locked, missing or unsafe worktrees and shall preserve local branches and unpushed commits.

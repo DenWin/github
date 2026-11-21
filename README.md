@@ -83,7 +83,10 @@ Other platforms keep their existing credential-helper configuration.
 
 The script protects the default branch with pull-request reviews and prevents
 force pushes and branch deletion. It also audits and remediates supported
-Actions, Dependabot, secret-scanning and merged-branch settings.
+Actions, Dependabot, secret-scanning and merged-branch settings. The fork
+pull-request workflow setting is hardened to the public-repository API's
+least-strictive supported policy. Unsupported or private-repository settings
+remain Unknown rather than passing as verified.
 
 ### Sync-GitRepositories.ps1
 

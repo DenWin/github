@@ -1,0 +1,44 @@
+= F005 Requirements
+
+== Functional requirements
+
+[#fr-f005-001]
+=== FR-F005-001: Commit workflow
+Status: Implemented
+
+Priority: P1
+
+Source: .github/workflows/ci.yml
+
+Pull-request commit workflows shall run the workflow audit, PSScriptAnalyzer and fast Pester unit tests on Linux and Windows.
+
+[#fr-f005-002]
+=== FR-F005-002: Main workflow
+Status: Implemented
+
+Priority: P1
+
+Source: .github/workflows/ci-main.yml
+
+Pushes to main shall run the full integration tier on Linux and Windows and the proof tier on Linux.
+
+[#fr-f005-003]
+=== FR-F005-003: Automatic fork workflows
+Status: Implemented
+
+Priority: P1
+
+Source: F002 fork pull-request policy
+
+Public-repository Actions settings shall allow the commit workflow to run for
+first-time contributors new to GitHub without additional repository-maintainer approval.
+
+[#fr-f005-004]
+=== FR-F005-004: Main run retention
+Status: Implemented
+
+Priority: P2
+
+Source: Claude review
+
+Main-branch runs shall not cancel earlier main runs, so quick pushes do not discard a complete full or proof check.

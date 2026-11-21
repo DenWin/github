@@ -2,6 +2,8 @@
 
 The [README](../README.md) documents the user-facing Git features. This guide
 covers contributor tooling, test scripts and repository maintenance.
+Feature goals and stable requirements are tracked in
+[the feature dossiers](features/README.md).
 
 Every PowerShell script has comment-based help. From the repository root, use:
 
@@ -192,7 +194,7 @@ not parse shell semantics, inspect nested local actions, verify commit trust,
 scan history for secrets or assess downloaded code. Fix local findings manually.
 
 GitHub checks cover action-source restrictions, SHA pin enforcement, workflow
-token privileges and PR approval, automatic fork pull-request workflows,
+token privileges and PR approval, automatic first-time fork pull-request workflows,
 Dependabot updates/alerts, secret scanning/push protection, private vulnerability
 reporting and deletion of merged head branches.
 `-Apply` can enable those features and restrict actions to GitHub-owned sources

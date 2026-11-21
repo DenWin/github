@@ -51,6 +51,10 @@ param (
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+if ($MyInvocation.InvocationName -ne '.' -and [string]::IsNullOrWhiteSpace($Repository)) {
+    throw 'Specify -Repository Owner/Repo explicitly.'
+}
+
 . (Join-Path $PSScriptRoot 'GitTooling.Common.ps1')
 
 
@@ -278,10 +282,10 @@ function Get-GitHubSecurityCheck {
         @{
             Id = 'github.fork-pr-workflows'; Endpoint = "$base/actions/permissions/fork-pr-contributor-approval"
             Required = @('approval_policy')
-            Test = { param ($data) $data['approval_policy'] -eq 'none' }
-            Message = 'Automatically run workflows for pull requests from forks without approval.'
+            Test = { param ($data) $data['approval_policy'] -eq 'first_time_contributors_new_to_github' }
+            Message = 'Automatically run workflows for first-time contributors new to GitHub.'
             Fix = @{ Endpoint = "$base/actions/permissions/fork-pr-contributor-approval"; Method = 'PUT'
-                Body = @{ approval_policy = 'none' }
+                Body = @{ approval_policy = 'first_time_contributors_new_to_github' }
             }
         }
         @{
@@ -447,6 +451,47 @@ function Get-DefaultBranchName {
 }
 
 
+function Test-NestedSettingDisabled {
+    param ($Setting)
+
+    if ($null -eq $Setting) {
+        return $false
+    }
+    if ($Setting -is [System.Collections.IDictionary]) {
+        if ($Setting.Contains('enabled')) {
+            return $Setting['enabled'] -ne $true
+        }
+        return $false
+    }
+    return $Setting -ne $true
+}
+
+
+function Get-PreservedRequiredStatusChecks {
+    param ($Legacy)
+
+    if ($null -eq $Legacy -or -not $Legacy.Success) {
+        return $null
+    }
+    $data = $Legacy.Data
+    if ($data -isnot [System.Collections.IDictionary] -or
+        -not $data.Contains('required_status_checks') -or
+        $data['required_status_checks'] -isnot [System.Collections.IDictionary]) {
+        return $null
+    }
+
+    $configured = $data['required_status_checks']
+    $preserved = @{ strict = [bool] $configured['strict'] }
+    if ($configured.Contains('checks') -and $null -ne $configured['checks']) {
+        $preserved['checks'] = @($configured['checks'])
+    }
+    elseif ($configured.Contains('contexts') -and $null -ne $configured['contexts']) {
+        $preserved['contexts'] = @($configured['contexts'])
+    }
+    return $preserved
+}
+
+
 function Get-BranchProtectionFinding {
     <#
     .SYNOPSIS
@@ -476,11 +521,12 @@ function Get-BranchProtectionFinding {
     }
     $branch = Get-DefaultBranchName -Response $Metadata
     $base = "repos/$Repository"
+    $preservedStatusChecks = Get-PreservedRequiredStatusChecks -Legacy $Legacy
     $fix = @{
         Endpoint = "$base/branches/$([uri]::EscapeDataString($branch))/protection"
         Method = 'PUT'
         Body = @{
-            required_status_checks = $null
+            required_status_checks = $preservedStatusChecks
             enforce_admins = $true
             required_pull_request_reviews = @{
                 dismiss_stale_reviews = $true
@@ -507,8 +553,8 @@ function Get-BranchProtectionFinding {
             $data -is [System.Collections.IDictionary] -and
             $data.Contains('required_pull_request_reviews') -and
             $null -ne $data['required_pull_request_reviews'] -and
-            $data['allow_force_pushes'] -ne $true -and
-            $data['allow_deletions'] -ne $true
+            (Test-NestedSettingDisabled -Setting $data['allow_force_pushes']) -and
+            (Test-NestedSettingDisabled -Setting $data['allow_deletions'])
         )
         if ($protected) {
             return
@@ -601,10 +647,20 @@ function Get-GitHubSecurityFinding {
     param ([string] $Repository)
 
     $base = "repos/$Repository"
+    $metadata = Invoke-SecurityApi -Endpoint $base
     $actionResponse = Invoke-SecurityApi -Endpoint "$base/actions/permissions"
     $actionPolicy = Get-ActionPolicyData -Response $actionResponse
+    $visibility = if ($metadata.Success -and $metadata.Data -is [System.Collections.IDictionary]) {
+        [string] $metadata.Data['visibility']
+    } else {
+        $null
+    }
 
     foreach ($check in Get-GitHubSecurityCheck -Repository $Repository -ActionPolicy $actionPolicy) {
+        if ($check.Id -eq 'github.fork-pr-workflows' -and $visibility -in @('private', 'internal')) {
+            New-SecurityFinding $check.Id 'Medium' $Repository 'Fork pull-request workflow approval differs for private and internal repositories.' 'Unknown'
+            continue
+        }
         if ($check.Id -eq 'github.action-sources') {
             $decision = Get-ActionSourceDecision -ActionPolicy $actionPolicy
             if ($decision -eq 'Skip') {
@@ -626,7 +682,6 @@ function Get-GitHubSecurityFinding {
 
     Get-AlertFinding -Response (Invoke-SecurityApi -Endpoint "$base/vulnerability-alerts") -Repository $Repository
 
-    $metadata = Invoke-SecurityApi -Endpoint $base
     $branch = Get-DefaultBranchName -Response $metadata
     $legacy = $null
     $rules = $null

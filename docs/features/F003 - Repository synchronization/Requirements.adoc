@@ -1,0 +1,23 @@
+= F003 Requirements
+
+== Functional requirements
+
+[#fr-f003-001]
+=== FR-F003-001: Synchronize owner repositories
+Status: Implemented
+
+Priority: P1
+
+Source: Sync-GitRepositories.ps1
+
+The script shall clone and fetch the selected owner's non-fork repositories and create worktrees for remote branches.
+
+[#fr-f003-002]
+=== FR-F003-002: Support repository and branch selection
+Status: Implemented
+
+Priority: P1
+
+Source: Sync-GitRepositories.ps1 -Url and -BranchOnly
+
+The script shall support owner, repository and branch URLs and shall select only the requested branch for BranchOnly worktrees.
