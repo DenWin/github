@@ -14,19 +14,20 @@ The script shall accept an explicit GitHub owner/repository target and shall not
 
 [#fr-f002-002]
 === FR-F002-002: Least-friction fork workflow policy
-Status: Planned
+Status: Implemented
 
 Priority: P1
 
 Source: Review feedback and GitHub Actions fork-PR approval setting
 
-The script shall audit public repositories for automatic workflows for first-time
-contributors who are new to GitHub and shall plan the API-supported least strict
-value instead of an unsupported `none` value.
+The script shall audit the fork pull-request approval policy and shall plan the
+API-supported least strict value, `first_time_contributors_new_to_github`
+(approval required only for contributors new to GitHub), instead of an
+unsupported `none` value.
 
 [#fr-f002-003]
 === FR-F002-003: Preserve branch required checks
-Status: Planned
+Status: Implemented
 
 Priority: P1
 
@@ -37,7 +38,7 @@ When remediating branch protection, the script shall preserve existing
 
 [#fr-f002-004]
 === FR-F002-004: Inspect nested push settings
-Status: Planned
+Status: Implemented
 
 Priority: P1
 
@@ -48,7 +49,7 @@ settings rather than comparing API objects to Boolean values.
 
 [#fr-f002-005]
 === FR-F002-005: Private repository fallback
-Status: Planned
+Status: Implemented
 
 Priority: P2
 

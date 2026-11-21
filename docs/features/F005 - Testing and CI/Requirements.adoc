@@ -23,15 +23,15 @@ Source: .github/workflows/ci-main.yml
 Pushes to main shall run the full integration tier on Linux and Windows and the proof tier on Linux.
 
 [#fr-f005-003]
-=== FR-F005-003: Automatic fork workflows
+=== FR-F005-003: Fork workflow approval
 Status: Implemented
 
 Priority: P1
 
 Source: F002 fork pull-request policy
 
-Public-repository Actions settings shall allow the commit workflow to run for
-first-time contributors new to GitHub without additional repository-maintainer approval.
+Public-repository Actions settings shall run the commit workflow for fork pull
+requests without maintainer approval, except for contributors new to GitHub.
 
 [#fr-f005-004]
 === FR-F005-004: Main run retention
