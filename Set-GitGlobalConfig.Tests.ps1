@@ -26,21 +26,21 @@ BeforeAll {
 
 Describe 'ConvertFrom-GitHubUser' {
     It 'returns the trimmed profile name and the noreply email' {
-        $identity = ConvertFrom-GitHubUser -Json '{"id":1,"login":"DenWin","name":" Dennis Winter "}'
-        $identity.Name | Should -BeExactly 'Dennis Winter'
-        $identity.Email | Should -BeExactly '1+DenWin@users.noreply.github.com'
+        $identity = ConvertFrom-GitHubUser -Json '{"id":1,"login":"Owner","name":" Owner Name "}'
+        $identity.Name | Should -BeExactly 'Owner Name'
+        $identity.Email | Should -BeExactly '1+Owner@users.noreply.github.com'
     }
 
     It 'falls back to the login for the name <Name>' -ForEach @(
-        @{ Name = 'null'; Json = '{"id":1,"login":"DenWin","name":null}' }
-        @{ Name = 'empty'; Json = '{"id":1,"login":"DenWin","name":""}' }
-        @{ Name = 'missing'; Json = '{"id":1,"login":"DenWin"}' }
+        @{ Name = 'null'; Json = '{"id":1,"login":"Owner","name":null}' }
+        @{ Name = 'empty'; Json = '{"id":1,"login":"Owner","name":""}' }
+        @{ Name = 'missing'; Json = '{"id":1,"login":"Owner"}' }
     ) {
-        (ConvertFrom-GitHubUser -Json $Json).Name | Should -BeExactly 'DenWin'
+        (ConvertFrom-GitHubUser -Json $Json).Name | Should -BeExactly 'Owner'
     }
 
     It 'throws when <Name> is missing' -ForEach @(
-        @{ Name = 'id'; Json = '{"login":"DenWin"}' }
+        @{ Name = 'id'; Json = '{"login":"Owner"}' }
         @{ Name = 'login'; Json = '{"id":1,"login":" "}' }
     ) {
         { ConvertFrom-GitHubUser -Json $Json } | Should -Throw '*noreply*'

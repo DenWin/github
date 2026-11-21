@@ -16,8 +16,8 @@
     determine the GitHub target.
 .PARAMETER Repository
     Explicit GitHub.com target as owner/name or as a repository or branch URL,
-    such as https://github.com/DenWin/github or
-    https://github.com/DenWin/github/tree/main; a branch in the URL is ignored.
+    such as https://github.com/Owner/Repo or
+    https://github.com/Owner/Repo/tree/main; a branch in the URL is ignored.
     An owner-only URL is rejected. Required unless LocalOnly is supplied. The
     target is never inferred from local Git configuration.
 .PARAMETER LocalOnly
@@ -36,10 +36,10 @@
     Throws after emitting findings if any have status Fail or Unknown, including
     manual-review checks. An Applied status is not a verified clean audit.
 .EXAMPLE
-    .\Invoke-RepositorySecurity.ps1 -Repository DenWin/github
+    .\Invoke-RepositorySecurity.ps1 -Repository Owner/Repo
     Audits local workflows and the explicit GitHub target without changing them.
 .EXAMPLE
-    .\Invoke-RepositorySecurity.ps1 -Repository https://github.com/DenWin/github -Apply -WhatIf
+    .\Invoke-RepositorySecurity.ps1 -Repository https://github.com/Owner/Repo -Apply -WhatIf
     Previews supported GitHub setting changes.
 .EXAMPLE
     .\Invoke-RepositorySecurity.ps1 -LocalOnly -Apply -InstallHooks
