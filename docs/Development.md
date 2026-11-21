@@ -168,10 +168,10 @@ parameters are:
 ```powershell
 .\Invoke-RepositorySecurity.ps1 -LocalOnly
 .\Invoke-RepositorySecurity.ps1 -LocalOnly -FailOnFinding
-.\Invoke-RepositorySecurity.ps1 -Repository DenWin/github |
+.\Invoke-RepositorySecurity.ps1 -Repository example/github |
     Format-Table Id, Severity, Status, Message -Wrap
-.\Invoke-RepositorySecurity.ps1 -Repository DenWin/github -Apply -WhatIf
-.\Invoke-RepositorySecurity.ps1 -Repository DenWin/github -Apply -Confirm
+.\Invoke-RepositorySecurity.ps1 -Repository example/github -Apply -WhatIf
+.\Invoke-RepositorySecurity.ps1 -Repository example/github -Apply -Confirm
 ```
 
 Live checks need authenticated `gh` with sufficient access; remediation may

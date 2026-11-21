@@ -12,8 +12,8 @@
     action when loaded.
 .EXAMPLE
     . .\GitTooling.Common.ps1
-    ConvertFrom-GitHubLocation 'https://github.com/DenWin/github/tree/feature/x'
-    Returns Owner DenWin, Repository github and Branch feature/x.
+    ConvertFrom-GitHubLocation 'https://github.com/example/github/tree/feature/x'
+    Returns Owner example, Repository github and Branch feature/x.
 .INPUTS
     None.
 .OUTPUTS
@@ -160,8 +160,8 @@ function ConvertFrom-GitHubLocation {
     .SYNOPSIS
         Parses a GitHub URL, remote URL, owner or owner/name into its parts.
     .EXAMPLE
-        ConvertFrom-GitHubLocation 'git@github.com:DenWin/github.git'
-        Returns Owner DenWin, Repository github and no Branch.
+        ConvertFrom-GitHubLocation 'git@github.com:example/github.git'
+        Returns Owner example, Repository github and no Branch.
     #>
     param (
         [Parameter(Mandatory)]

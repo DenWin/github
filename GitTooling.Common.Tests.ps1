@@ -22,17 +22,17 @@ BeforeAll {
 
 Describe 'Get-GitHubLocationPath' {
     It 'returns <Expected> for <Location>' -ForEach @(
-        @{ Location = 'https://github.com/denwin'; Expected = 'denwin' }
-        @{ Location = 'https://github.com/denwin/'; Expected = 'denwin' }
-        @{ Location = 'https://github.com/denwin/github'; Expected = 'denwin/github' }
-        @{ Location = 'https://github.com/DenWin/github/tree/feature/git-workflow-tooling'; Expected = 'DenWin/github/tree/feature/git-workflow-tooling' }
-        @{ Location = 'github.com/DenWin/github/'; Expected = 'DenWin/github' }
-        @{ Location = 'github.com:DenWin/github'; Expected = 'DenWin/github' }
+        @{ Location = 'https://github.com/example'; Expected = 'example' }
+        @{ Location = 'https://github.com/example/'; Expected = 'example' }
+        @{ Location = 'https://github.com/example/github'; Expected = 'example/github' }
+        @{ Location = 'https://github.com/example/github/tree/feature/git-workflow-tooling'; Expected = 'example/github/tree/feature/git-workflow-tooling' }
+        @{ Location = 'github.com/example/github/'; Expected = 'example/github' }
+        @{ Location = 'github.com:example/github'; Expected = 'example/github' }
         @{ Location = 'http://www.github.com/o/r'; Expected = 'o/r' }
         @{ Location = 'git@github.com:o/r.git'; Expected = 'o/r.git' }
         @{ Location = 'ssh://git@github.com/o/r'; Expected = 'o/r' }
         @{ Location = 'https://token@github.com/o/r?tab=readme#top'; Expected = 'o/r' }
-        @{ Location = ' DenWin '; Expected = 'DenWin' }
+        @{ Location = ' example '; Expected = 'example' }
         @{ Location = 'o/r/'; Expected = 'o/r' }
     ) {
         Get-GitHubLocationPath -Location $Location | Should -BeExactly $Expected
@@ -49,8 +49,8 @@ Describe 'Get-GitHubLocationPath' {
 
 Describe 'ConvertFrom-GitHubPath' {
     It 'splits <Path>' -ForEach @(
-        @{ Path = 'DenWin'; Expected = 'DenWin||' }
-        @{ Path = 'DenWin/github'; Expected = 'DenWin|github|' }
+        @{ Path = 'example'; Expected = 'example||' }
+        @{ Path = 'example/github'; Expected = 'example|github|' }
         @{ Path = 'o/r.git'; Expected = 'o|r|' }
         @{ Path = 'o/my.repo'; Expected = 'o|my.repo|' }
         @{ Path = 'o/r/tree/main'; Expected = 'o|r|main' }
@@ -62,7 +62,7 @@ Describe 'ConvertFrom-GitHubPath' {
     }
 
     It 'returns null, not empty, for absent parts' {
-        $location = ConvertFrom-GitHubPath -Path 'DenWin'
+        $location = ConvertFrom-GitHubPath -Path 'example'
         $null -eq $location.Repository | Should -BeTrue
         $null -eq $location.Branch | Should -BeTrue
     }
@@ -81,24 +81,24 @@ Describe 'ConvertFrom-GitHubPath' {
 
 Describe 'Resolve-GitHubTarget' {
     It 'resolves <Case>' -ForEach @(
-        @{ Case = 'an owner name'; Owner = 'DenWin'; Url = ''; BranchOnly = $false; Expected = 'DenWin||' }
-        @{ Case = 'an owner URL given as owner'; Owner = 'https://github.com/denwin/'; Url = ''; BranchOnly = $false; Expected = 'denwin||' }
-        @{ Case = 'URL A'; Owner = ''; Url = 'https://github.com/denwin'; BranchOnly = $false; Expected = 'denwin||' }
-        @{ Case = 'URL B1'; Owner = ''; Url = 'https://github.com/denwin/github/'; BranchOnly = $false; Expected = 'denwin|github|' }
-        @{ Case = 'URL B2 without BranchOnly'; Owner = ''; Url = 'https://github.com/DenWin/github/tree/feature/git-workflow-tooling'; BranchOnly = $false; Expected = 'DenWin|github|' }
-        @{ Case = 'URL B2 with BranchOnly'; Owner = ''; Url = 'https://github.com/DenWin/github/tree/feature/git-workflow-tooling/'; BranchOnly = $true; Expected = 'DenWin|github|feature/git-workflow-tooling' }
-        @{ Case = 'a URL in place of a default owner'; Owner = 'DenWin'; Url = 'github.com/other/repo'; BranchOnly = $false; Expected = 'other|repo|' }
+        @{ Case = 'an owner name'; Owner = 'example'; Url = ''; BranchOnly = $false; Expected = 'example||' }
+        @{ Case = 'an owner URL given as owner'; Owner = 'https://github.com/example/'; Url = ''; BranchOnly = $false; Expected = 'example||' }
+        @{ Case = 'URL A'; Owner = ''; Url = 'https://github.com/example'; BranchOnly = $false; Expected = 'example||' }
+        @{ Case = 'URL B1'; Owner = ''; Url = 'https://github.com/example/github/'; BranchOnly = $false; Expected = 'example|github|' }
+        @{ Case = 'URL B2 without BranchOnly'; Owner = ''; Url = 'https://github.com/example/github/tree/feature/git-workflow-tooling'; BranchOnly = $false; Expected = 'example|github|' }
+        @{ Case = 'URL B2 with BranchOnly'; Owner = ''; Url = 'https://github.com/example/github/tree/feature/git-workflow-tooling/'; BranchOnly = $true; Expected = 'example|github|feature/git-workflow-tooling' }
+        @{ Case = 'a URL in place of a default owner'; Owner = 'example'; Url = 'github.com/other/repo'; BranchOnly = $false; Expected = 'other|repo|' }
     ) {
         $target = Resolve-GitHubTarget -GitHubOwner $Owner -Url $Url -BranchOnly:$BranchOnly
         "$($target.Owner)|$($target.Repository)|$($target.Branch)" | Should -BeExactly $Expected
     }
 
     It 'rejects a repository passed as owner' {
-        { Resolve-GitHubTarget -GitHubOwner 'DenWin/github' } | Should -Throw '*use -Url*'
+        { Resolve-GitHubTarget -GitHubOwner 'example/github' } | Should -Throw '*use -Url*'
     }
 
     It 'rejects -BranchOnly without a branch URL' {
-        { Resolve-GitHubTarget -Url 'https://github.com/DenWin/github' -BranchOnly } |
+        { Resolve-GitHubTarget -Url 'https://github.com/example/github' -BranchOnly } |
             Should -Throw '*-BranchOnly requires a branch URL*'
     }
 }

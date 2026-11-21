@@ -72,20 +72,20 @@ BeforeAll {
 
 Describe 'Select-DirectoryName' {
     It 'returns <Expected> for <Name> among <Candidate>' -ForEach @(
-        @{ Name = 'DenWin'; Candidate = @('DenWin', 'denwin'); Expected = 'DenWin' }
-        @{ Name = 'denwin'; Candidate = @('DenWin', 'other'); Expected = 'DenWin' }
+        @{ Name = 'example'; Candidate = @('example', 'example'); Expected = 'example' }
+        @{ Name = 'example'; Candidate = @('example', 'other'); Expected = 'example' }
         @{ Name = 'github'; Candidate = @('github'); Expected = 'github' }
     ) {
         Select-DirectoryName -Name $Name -Candidate $Candidate | Should -BeExactly $Expected
     }
 
     It 'returns null when nothing matches' {
-        Select-DirectoryName -Name 'missing' -Candidate @('DenWin') | Should -BeNullOrEmpty
+        Select-DirectoryName -Name 'missing' -Candidate @('example') | Should -BeNullOrEmpty
         Select-DirectoryName -Name 'missing' -Candidate @() | Should -BeNullOrEmpty
     }
 
     It 'rejects several case-only matches' {
-        { Select-DirectoryName -Name 'denwin' -Candidate @('DenWin', 'DENWIN') } | Should -Throw '*Several folders*'
+        { Select-DirectoryName -Name 'example' -Candidate @('Example', 'EXAMPLE') } | Should -Throw '*Several folders*'
     }
 }
 

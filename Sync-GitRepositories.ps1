@@ -15,13 +15,13 @@
     explicit upstream configuration. Requires Git and authenticated gh on PATH.
 .PARAMETER GitHubOwner
     GitHub user or organization whose non-fork repositories are synchronized,
-    given as a name or a github.com owner URL such as https://github.com/DenWin.
-    Defaults to DenWin. Cannot be combined with Url.
+    given as a name or a github.com owner URL such as https://github.com/example.
+    Defaults to example. Cannot be combined with Url.
 .PARAMETER Url
     github.com location selecting what to synchronize. An owner URL such as
-    https://github.com/DenWin behaves like GitHubOwner. A repository URL such as
-    https://github.com/DenWin/github, or a branch URL such as
-    https://github.com/DenWin/github/tree/feature/login, synchronizes only that
+    https://github.com/example behaves like GitHubOwner. A repository URL such as
+    https://github.com/example/github, or a branch URL such as
+    https://github.com/example/github/tree/feature/login, synchronizes only that
     repository with all its branches. HTTPS, SSH and scheme-less forms, a
     trailing slash and a .git suffix are accepted. An explicitly selected fork
     is synchronized.
@@ -30,26 +30,26 @@
     repository is still cloned or fetched completely. The branch is created even
     if it matches an ignored pattern such as dependabot/*. Requires a branch URL.
 .PARAMETER TargetDirectory
-    Root directory containing one folder per owner. Defaults to C:\GIT, so
-    DenWin/github is placed in C:\GIT\DenWin\github. Each repository folder
+    Root directory containing one folder per owner. Defaults to C:\Repositories, so
+    example/github is placed in C:\Repositories\example\github. Each repository folder
     contains a bare .git repository and worktrees named after branch paths,
-    such as C:\GIT\DenWin\github\feature\login for branch feature/login.
+    such as C:\Repositories\example\github\feature\login for branch feature/login.
 .PARAMETER DryRun
     Reports actions without cloning, fetching, changing configuration or creating
     directories. Still queries GitHub and reads local Git metadata. Uncloned
     repositories have unknown branches; existing ones use the last fetched refs.
 .EXAMPLE
     .\Sync-GitRepositories.ps1 -DryRun
-    Previews synchronization of DenWin's repositories into C:\GIT\DenWin.
+    Previews synchronization of example's repositories into C:\Repositories\example.
 .EXAMPLE
-    .\Sync-GitRepositories.ps1 -GitHubOwner DenWin -TargetDirectory C:\GIT
-    Synchronizes every non-fork DenWin repository into C:\GIT\DenWin.
+    .\Sync-GitRepositories.ps1 -GitHubOwner example -TargetDirectory C:\Repositories
+    Synchronizes every non-fork example repository into C:\Repositories\example.
 .EXAMPLE
-    .\Sync-GitRepositories.ps1 -Url https://github.com/DenWin/github
-    Synchronizes only DenWin/github, with worktrees for all its branches.
+    .\Sync-GitRepositories.ps1 -Url https://github.com/example/github
+    Synchronizes only example/github, with worktrees for all its branches.
 .EXAMPLE
-    .\Sync-GitRepositories.ps1 -Url https://github.com/DenWin/github/tree/feature/login -BranchOnly
-    Synchronizes DenWin/github and creates only the feature/login worktree.
+    .\Sync-GitRepositories.ps1 -Url https://github.com/example/github/tree/feature/login -BranchOnly
+    Synchronizes example/github and creates only the feature/login worktree.
 .INPUTS
     None. This script does not accept pipeline input.
 .OUTPUTS
@@ -70,7 +70,7 @@
 [CmdletBinding(DefaultParameterSetName = 'Owner')]
 param (
     [Parameter(ParameterSetName = 'Owner')]
-    [string] $GitHubOwner = 'DenWin',
+    [string] $GitHubOwner = 'example',
 
     [Parameter(Mandatory, ParameterSetName = 'Url')]
     [string] $Url,
@@ -78,7 +78,7 @@ param (
     [Parameter(ParameterSetName = 'Url')]
     [switch] $BranchOnly,
 
-    [string] $TargetDirectory = 'C:\GIT',
+    [string] $TargetDirectory = 'C:\Repositories',
 
     [switch] $DryRun
 )
