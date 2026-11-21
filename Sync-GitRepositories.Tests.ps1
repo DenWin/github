@@ -197,10 +197,10 @@ Describe 'Test-WorktreeRegistered' {
 }
 
 Describe 'Test-UpstreamConfigured' {
-    It 'returns <Expected> for exit codes <Codes>' -ForEach @(
-        @{ Codes = @(0, 1); Expected = $true }
-        @{ Codes = @(1, 0); Expected = $true }
-        @{ Codes = @(0, 128); Expected = $true }
+    It 'returns <Expected> only when both settings exist for exit codes <Codes>' -ForEach @(
+        @{ Codes = @(0, 0); Expected = $true }
+        @{ Codes = @(0, 1); Expected = $false }
+        @{ Codes = @(1, 0); Expected = $false }
         @{ Codes = @(1, 1); Expected = $false }
     ) {
         Test-UpstreamConfigured -ExitCode $Codes | Should -Be $Expected
@@ -311,6 +311,14 @@ Describe 'New-BranchWorktree' -Tag Integration {
         Invoke-Git -Arguments @('-C', $layout.BareRepository, 'branch', '--set-upstream-to=origin/feature/login', 'main') | Out-Null
         $null = Invoke-Captured { New-BranchWorktree @worktreeArguments -Branch main }
         Get-Upstream main | Should -Be 'refs/remotes/origin/feature/login'
+    }
+
+    It 'repairs partially configured tracking' {
+        Invoke-Git -Arguments @(
+            '-C', $layout.BareRepository, 'config', 'branch.main.remote', 'origin'
+        ) | Out-Null
+        $null = Invoke-Captured { New-BranchWorktree @worktreeArguments -Branch main }
+        Get-Upstream main | Should -Be 'refs/remotes/origin/main'
     }
 
     It 'repairs missing tracking for an already registered worktree and skips it' {

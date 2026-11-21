@@ -305,15 +305,16 @@ function Test-UpstreamConfigured {
         [int[]] $ExitCode
     )
 
+    if ($ExitCode.Count -ne 2) {
+        throw 'Could not read upstream configuration (expected remote and merge exit codes).'
+    }
+
     foreach ($code in $ExitCode) {
-        if ($code -eq 0) {
-            return $true
-        }
-        if ($code -ne 1) {
+        if ($code -ne 0 -and $code -ne 1) {
             throw "Could not read upstream configuration (git exit code $code)."
         }
     }
-    return $false
+    return $ExitCode[0] -eq 0 -and $ExitCode[1] -eq 0
 }
 
 
